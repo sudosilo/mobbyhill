@@ -6,8 +6,6 @@ You drive up a wireframe hill from the driver seat and lean by tilting the phone
 
 Live at mobbyhill.vercel.app
 
-This app is checked every morning by Control Troll.
-
 Latest change. 2026-11-14, v2026.11.14. Created MobbyHill, a wireframe off road hill climb game with a driver seat view and phone tilt lean. Added a run clock, flag splits, and high scores on the score hub.
 
 Full history is in CHANGELOG.md.
