@@ -8,7 +8,7 @@
 <meta name="theme-color" content="#e9e6dc">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%23eceae3'/%3E%3Cpath d='M2 24 L10 12 L16 18 L22 8 L30 24 Z' fill='none' stroke='%23d2601a' stroke-width='2.4'/%3E%3C/svg%3E">
 <!--
-MobbyHill v3. v1 written in chat with Claude Opus 5.5, Nov 14 2026.
+MobbyHill v4. v1 written in chat with Claude Opus 5.5, Nov 14 2026.
 Wireframe 4x4 on wireframe terrain. Driver seat camera with hood, dash and steering wheel, chase camera, top camera.
 Controls carried over from the dock yard truck game: drag steering wheel, D N R gears, Brake and Gas pedals.
 Phone tilt shifts the driver's weight left or right. The center of gravity moves with the driver,
@@ -16,6 +16,7 @@ so leaning toward the low side brings the rollover point closer and leaning towa
 Rollover and flip use a pivot model: the rig rotates about the downhill wheels when the tipping moment wins.
 v2 adds a run clock, flag split times against your best run, and posting runs to the shared score hub (flags first, then time).
 v3 adds fore and aft lean (tilt or the up and down arrows) that steers pitch in the air and shifts weight on climbs, stickier suspension, a garage with lift kits, mud tires, a bigger engine and a snorkel bought with flag cash, soft sand, mud and water crossings, and boulders that only taller tires can climb.
+v4 adds a mode menu: Trail, Fuel (flags refill the tank), Hill climb (one mountain, highest point wins) and Climb plus fuel, each with its own leaderboard. Ghost replays your best run in each mode. Damage mode makes hits stick until you pay for repairs in the garage.
 -->
 <style>
 :root{
@@ -35,6 +36,8 @@ button{font:inherit;color:inherit;cursor:pointer;touch-action:manipulation}
 .chip{background:var(--panel);border:1px solid var(--edge);border-radius:6px;padding:2px 6px;display:flex;justify-content:space-between;align-items:center;gap:4px;min-width:0}
 .chip .k{font-size:10px;color:var(--ink2);white-space:nowrap}
 .chip .v{font-size:13px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.fbar{flex:1;height:9px;background:#fff;border:1px solid var(--edge);border-radius:4px;overflow:hidden;max-width:90px}
+#fuelFill{display:block;height:100%;width:100%;background:var(--green)}
 #arrow{display:inline-block;color:var(--red);font-weight:900;transition:transform .1s}
 
 #ticker{position:absolute;left:50%;transform:translateX(-50%);top:calc(env(safe-area-inset-top,0px) + 112px);width:max-content;max-width:94vw;background:var(--yellow);border:2px solid #b58d12;border-radius:6px;padding:4px 12px;font-size:14px;font-weight:800;text-align:center;color:#3a2f05;opacity:1;transition:opacity .3s}
@@ -113,6 +116,12 @@ input{user-select:text;-webkit-user-select:text}
 .sc .row{display:flex;gap:8px;margin-top:14px}
 .sc button{flex:1;border:2px solid var(--edge);background:#fff;border-radius:9px;padding:12px 6px;font-size:16px;font-weight:900}
 .sc button.go{background:var(--yellow);border-color:#b58d12}
+.modes{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:12px}
+.modes button{border:2px solid var(--edge);background:#fff;border-radius:9px;padding:10px 4px;font-size:15px;font-weight:900}
+.modes button.on{background:#fbe6d6;border-color:var(--orange);color:#7a3510}
+.sc .mnote{text-align:center;font-size:13px;min-height:36px;margin-top:6px}
+.sc button.tog{padding:8px 6px;font-size:14px}
+.sc button.tog.on{background:#cfe0f4;border-color:var(--blue)}
 .sc .best{font-size:13px;font-weight:800;margin-top:10px;color:var(--blue)}
 </style>
 </head>
@@ -125,9 +134,11 @@ input{user-select:text;-webkit-user-select:text}
     <canvas class="gauge" id="gPitch"></canvas>
     <div id="chips">
       <div class="chip"><span class="k">Time</span><span class="v" id="cTime">0:00.0</span></div>
-      <div class="chip"><span class="k">Flags</span><span class="v" id="cFlags">0</span></div>
+      <div class="chip"><span class="k" id="kFlags">Flags</span><span class="v" id="cFlags">0</span></div>
       <div class="chip"><span class="k">Next</span><span class="v"><span id="arrow">▲</span> <span id="cNext">0 m</span></span></div>
       <div class="chip"><span class="k">Best</span><span class="v" id="cBest">0</span></div>
+      <div class="chip" id="chFuel"><span class="k">Fuel</span><span class="fbar"><span id="fuelFill"></span></span></div>
+      <div class="chip" id="chDmg"><span class="k">Damage</span><span class="v" id="cDmg">0%</span></div>
     </div>
   </div>
   <div id="ticker" class="off">Shift to D and hold Gas</div>
@@ -141,7 +152,7 @@ input{user-select:text;-webkit-user-select:text}
     <button class="sbtn" id="bEnd">End</button>
     <button class="sbtn" id="bBoard">Scores</button>
     <button class="sbtn" id="bGarage">Garage</button>
-    <button class="sbtn" id="bNew">New</button>
+    <button class="sbtn" id="bNew">Menu</button>
   </div>
 
   <div id="leanBox">
@@ -173,14 +184,16 @@ input{user-select:text;-webkit-user-select:text}
     <div id="subMsg"></div>
     <div id="cardBtns"><button id="cFlip" class="go">Flip it back</button><button id="cBoard">Scores</button><button id="cNew">New run</button></div></div>
   <div id="garage"><div class="bt">Garage</div><div id="bank"></div><div id="parts"></div><div id="gStats"></div><div class="loc">Flags pay cash. Changing parts starts a new run.</div><button id="garageClose">Done</button></div>
-  <div id="board"><div class="bt">MobbyHill top runs</div><div id="boardList"></div><div class="loc" id="boardLoc"></div><button id="boardClose">Close</button></div>
+  <div id="board"><div class="bt" id="boardTitle">MobbyHill top runs</div><div id="boardList"></div><div class="loc" id="boardLoc"></div><button id="boardClose">Close</button></div>
 </div>
 
 <div id="start">
   <div class="sc">
     <h1>MobbyHill</h1>
-    <p>Climb the wireframe hills and reach the red flags. Drag the wheel to steer, pick D or R, hold Gas. Watch the roll and pitch gauges. Red marks are where the rig goes over.</p>
-    <p>Tilt the phone to lean the driver. Leaning toward the uphill side keeps you on four wheels. Leaning downhill tips you over. The arrow buttons lean too.</p>
+    <p>Drag the wheel to steer, pick D or R, hold Gas. Red marks on the roll and pitch gauges are where the rig goes over. Tilt the phone or use the arrows to lean the driver.</p>
+    <div class="modes" id="modes"></div>
+    <p class="mnote" id="modeNote"></p>
+    <div class="row"><button class="tog" id="tGhost">Ghost</button><button class="tog" id="tDmg">Damage</button></div>
     <div class="row"><button class="go" id="sTilt">Start with tilt</button><button id="sPlain">Start</button></div>
     <div class="best" id="sBest"></div>
   </div>
@@ -197,15 +210,26 @@ const now=()=>performance.now()/1000;
 
 // rig size in meters. T is half the track, A is half the wheelbase, CGH is center of gravity height
 const T=0.78,A=1.2,CGZ=0.08,MU=0.85,LEANMAX=0.17,FBMAX=0.2;
+// game modes. each has its own leaderboard on the score hub, its own best run and its own ghost
+const MODES={
+  trail:{n:'Trail',slug:'mobbyhill',fuel:false,climb:false,note:'Reach the red flags across open country. More flags wins, then less time.'},
+  fuel:{n:'Fuel',slug:'mobbyhill-fuel',fuel:true,climb:false,note:'Same trail with a gas tank. Each flag refills it. Run dry and the run is over.'},
+  climb:{n:'Hill climb',slug:'mobbyhill-climb',fuel:false,climb:true,note:'One long mountain that keeps getting steeper. The highest point you reach is your score.'},
+  climbfuel:{n:'Climb + fuel',slug:'mobbyhill-climbfuel',fuel:true,climb:true,note:'The mountain with a gas tank. Flags refill it. Climb as high as the fuel lets you.'}};
+let MODE='trail',CLIMBT=false,OPT={ghost:true,damage:false};
+try{const o=JSON.parse(localStorage.getItem('mobbyhill-opts')||'null');if(o){if(MODES[o.mode])MODE=o.mode;if(typeof o.ghost==='boolean')OPT.ghost=o.ghost;if(typeof o.damage==='boolean')OPT.damage=o.damage;}}catch(e){}
+CLIMBT=MODES[MODE].climb;
+function saveOpts(){try{localStorage.setItem('mobbyhill-opts',JSON.stringify({mode:MODE,ghost:OPT.ghost,damage:OPT.damage}));}catch(e){}}
 // these change with the parts bolted on in the garage
 let CGH=0.78,WR=0.42,MUP=0,CLIMB=.5,POWER=1,INTAKE=.75,MUDT=false;
 const PARTS=[
   {k:'lift',name:'Lift kit',note:'Taller climbs bigger rocks but tips sooner',opts:[{n:'Stock',c:0},{n:'2 inch',c:300},{n:'4 inch',c:800}]},
   {k:'tires',name:'Tires',note:'Mud tires grip in mud, sand and water',opts:[{n:'All terrain',c:0},{n:'Mud',c:400}]},
   {k:'engine',name:'Engine',note:'More power for steep climbs and soft ground',opts:[{n:'Stock',c:0},{n:'Big V8',c:600}]},
-  {k:'snorkel',name:'Air intake',note:'A snorkel lets you cross deep water',opts:[{n:'Stock',c:0},{n:'Snorkel',c:300}]}];
-let SHOP={bank:0,own:{lift:[0],tires:[0],engine:[0],snorkel:[0]},eq:{lift:0,tires:0,engine:0,snorkel:0}};
-try{const sh=JSON.parse(localStorage.getItem('mobbyhill-shop')||'null');if(sh&&sh.own&&sh.eq)SHOP=Object.assign(SHOP,sh);}catch(e){}
+  {k:'snorkel',name:'Air intake',note:'A snorkel lets you cross deep water',opts:[{n:'Stock',c:0},{n:'Snorkel',c:300}]},
+  {k:'tank',name:'Fuel tank',note:'A long range tank goes half again as far in the fuel modes',opts:[{n:'Stock',c:0},{n:'Long range',c:350}]}];
+let SHOP={bank:0,own:{lift:[0],tires:[0],engine:[0],snorkel:[0],tank:[0]},eq:{lift:0,tires:0,engine:0,snorkel:0,tank:0},dmg:0,pull:1};
+try{const sh=JSON.parse(localStorage.getItem('mobbyhill-shop')||'null');if(sh&&sh.own&&sh.eq){SHOP.bank=sh.bank||0;Object.assign(SHOP.own,sh.own);Object.assign(SHOP.eq,sh.eq);SHOP.dmg=sh.dmg||0;SHOP.pull=sh.pull||1;}}catch(e){}
 function saveShop(){try{localStorage.setItem('mobbyhill-shop',JSON.stringify(SHOP));}catch(e){}}
 function applyRig(){
   const L=SHOP.eq.lift;WR=[.42,.47,.53][L];MUP=[0,.12,.24][L]+(WR-.42);CGH=.78+MUP*.9;CLIMB=WR*1.2+[0,.06,.12][L];
@@ -219,7 +243,11 @@ function applyRig(){
 function hh(ix,iz,s){let h=Math.imul(ix|0,374761393)^Math.imul(iz|0,668265263)^Math.imul(s|0,1442695041);h=Math.imul(h^(h>>>13),1274126177);h^=h>>>16;return(h>>>0)/4294967296;}
 function vn(x,z,s){const ix=Math.floor(x),iz=Math.floor(z),fx=x-ix,fz=z-iz,ux=fx*fx*(3-2*fx),uz=fz*fz*(3-2*fz);
   const a=hh(ix,iz,s),b=hh(ix+1,iz,s),c=hh(ix,iz+1,s),d=hh(ix+1,iz+1,s);return(a+(b-a)*ux+(c-a)*uz+(a-b-c+d)*ux*uz)*2-1;}
-function baseH(x,z){const r=Math.hypot(x,z),k=Math.min(1.8,.4+r/600),f=Math.min(1,r/75),ff=f*f*(3-2*f);
+// hill climb mountain: a ramp that keeps steepening, a shallow bowl that keeps you near the line, and bumps on top
+function climbRamp(z){if(z<40)return 0;const u=z-40;return .09*u+u*u/5200;}
+function climbH(x,z){const r=Math.hypot(x,z),k=Math.min(1.6,.35+Math.max(0,z)/700),f=Math.min(1,r/60),ff=f*f*(3-2*f);
+  return climbRamp(z)+Math.min(30,.0016*x*x)*(z>0?1:.4)+(6*vn(x/70,z/70,2)+2.4*vn(x/24,z/24,3)+.8*vn(x/8.5,z/8.5,4))*k*ff;}
+function baseH(x,z){if(CLIMBT)return climbH(x,z);const r=Math.hypot(x,z),k=Math.min(1.8,.4+r/600),f=Math.min(1,r/75),ff=f*f*(3-2*f);
   return(26*vn(x/180,z/180,1)+11*vn(x/66,z/66,2)*k+3.4*vn(x/24,z/24,3)*k+.9*vn(x/8.5,z/8.5,4)*Math.min(1,k))*ff;}
 // wet ground: one noise field makes ponds and fords, with a ring of mud around them. another makes soft sand washes
 const DRYR=110;
@@ -230,6 +258,7 @@ function wetM(x,z){const sl=(Math.abs(coarseH(x+3,z)-coarseH(x-3,z))+Math.abs(co
 function carve(m){return clamp((m-.4)*3,0,1.2);}
 function surfAt(x,z){ // k 0 dirt, 1 sand, 2 mud, 3 water. d is water depth in meters
   if(Math.hypot(x,z)<DRYR)return{k:0,d:0};
+  if(CLIMBT)return vn(x/160,z/160,22)>.42?{k:1,d:0}:{k:0,d:0};
   const m=wetM(x,z),c=carve(m);
   if(c>.12)return{k:3,d:c-.12};
   if(m>.3)return{k:2,d:0};
@@ -240,13 +269,13 @@ const SURF=['Dirt','Soft sand','Mud','Water'];
 const RC=15,ROCKS=new Map();
 function rockCell(ci,cj){const key=ci*100003+cj;let r=ROCKS.get(key);if(r!==undefined)return r;
   r=null;const cx=(ci+.5)*RC,cz=(cj+.5)*RC,d0=Math.hypot(cx,cz);
-  if(d0>70&&hh(ci,cj,7)<Math.min(.5,.14+d0/2500)){const rad=.8+hh(ci,cj,8)*1.5,x=ci*RC+rad+hh(ci,cj,9)*(RC-2*rad),z=cj*RC+rad+hh(ci,cj,10)*(RC-2*rad);
+  if(d0>70&&hh(ci,cj,7)<Math.min(CLIMBT?.2:.5,.14+d0/2500)){const rad=.8+hh(ci,cj,8)*1.5,x=ci*RC+rad+hh(ci,cj,9)*(RC-2*rad),z=cj*RC+rad+hh(ci,cj,10)*(RC-2*rad);
     if(surfAt(x,z).k===0)r={x,z,r:rad,h:Math.min(rad*.75,.25+hh(ci,cj,11)*1.05),s:hh(ci,cj,12)*6.28,b:baseH(x,z)};}
   if(ROCKS.size>20000)ROCKS.clear();ROCKS.set(key,r);return r;}
 function rockH(x,z){const k=rockCell(Math.floor(x/RC),Math.floor(z/RC));if(!k)return 0;const dx=x-k.x,dz=z-k.z,d2=(dx*dx+dz*dz)/(k.r*k.r);if(d2>=1)return 0;const t=1-d2;return k.h*t*Math.sqrt(t);}
-function heightAt(x,z){const b=baseH(x,z);if(Math.hypot(x,z)<DRYR)return b+rockH(x,z);return b-carve(wetM(x,z))+rockH(x,z);}
+function heightAt(x,z){const b=baseH(x,z);if(CLIMBT||Math.hypot(x,z)<DRYR)return b+rockH(x,z);return b-carve(wetM(x,z))+rockH(x,z);}
 function waterY(x,z){return baseH(x,z)-.12;}
-function flagPos(i){const z=105*(i+1),x=60*Math.sin(z/240)+30*Math.sin(z/91+1.3);return{x,z,y:Math.max(heightAt(x,z),surfAt(x,z).k===3?waterY(x,z):-1e9)};}
+function flagPos(i){if(CLIMBT){const z=80*(i+1),x=12*Math.sin(z/130);return{x,z,y:heightAt(x,z)};}const z=105*(i+1),x=60*Math.sin(z/240)+30*Math.sin(z/91+1.3);return{x,z,y:Math.max(heightAt(x,z),surfAt(x,z).k===3?waterY(x,z):-1e9)};}
 
 // =====================================================================
 // state
@@ -257,18 +286,34 @@ const G={alive:true,gear:'N',gas:false,brake:false,throttle:0,wheelDeg:0,wheelHe
   cam:'driver',look:0,snd:true,started:false,
   x:0,z:0,y:0,vy:0,yaw:0,v:0,vh:0,roll:0,pitch:0,rollRate:0,pitchRate:0,yawRate:0,air:false,
   lR:0,lRv:0,sR:0,lP:0,lPv:0,sP:0,phiG:0,thG:0,yG:0,gwr:0,gwp:0,latF:0,aLong:0,
-  dist:0,flags:0,next:0,flips:0,runT0:null,runT:0,flagT:0,splits:[],ended:false,sentKey:'',spin:0,susp:[0,0,0,0],slide:false,spinOut:false,airT:0,
+  dist:0,flags:0,next:0,flips:0,fuel:1,outT:0,alt:0,maxAlt:0,altT:0,rec:[],recT:0,endWhy:'',runT0:null,runT:0,flagT:0,splits:[],ended:false,sentKey:'',spin:0,susp:[0,0,0,0],slide:false,spinOut:false,airT:0,
   msgUntil:0,shake:0,crashT:0,crashWhy:'',warnT:0,wreck:null,camP:null,orbit:0,best:{dist:0,flags:0}};
-// best run on this phone: most flags, then the fastest time to the last flag. splits are kept to compare against
-G.best={flags:0,t:0,dist:0,splits:[]};
-try{const b=JSON.parse(localStorage.getItem('mobbyhill-best2')||'null');if(b&&typeof b.flags==='number')G.best=Object.assign(G.best,b);}catch(e){}
+// best run on this phone for each mode: flags then time, or highest point for the climb modes. splits are kept to compare against
+const BESTS={};for(const m in MODES)BESTS[m]={flags:0,t:0,dist:0,alt:0,splits:[]};
+try{const b=JSON.parse(localStorage.getItem('mobbyhill-best3')||'null');if(b)for(const m in MODES)if(b[m])Object.assign(BESTS[m],b[m]);
+  else{const o=JSON.parse(localStorage.getItem('mobbyhill-best2')||'null');if(o&&typeof o.flags==='number')Object.assign(BESTS.trail,o);}}catch(e){}
+G.best=BESTS[MODE];
 function better(f,t,bf,bt){return f>bf||(f===bf&&f>0&&t<bt);}
+function runBetter(){const b=G.best;return CLIMBT?G.maxAlt>b.alt+.05:better(G.flags,G.flagT,b.flags,b.t);}
+// ghost: the best run's path, sampled five times a second, replayed beside you
+const GDT=.2,GHOST={};
+function ghostFor(m){if(!(m in GHOST)){GHOST[m]=null;try{GHOST[m]=JSON.parse(localStorage.getItem('mobbyhill-ghost-'+m)||'null');}catch(e){}}return GHOST[m];}
 function saveBest(){
-  let ch=false;
-  if(better(G.flags,G.flagT,G.best.flags,G.best.t)){G.best.flags=G.flags;G.best.t=G.flagT;G.best.splits=G.splits.slice();ch=true;}
-  if(G.dist>G.best.dist){G.best.dist=G.dist;ch=true;}
-  if(ch)try{localStorage.setItem('mobbyhill-best2',JSON.stringify(G.best));}catch(e){}
+  let ch=false;const b=G.best;
+  if(runBetter()){
+    if(CLIMBT){b.alt=G.maxAlt;b.t=G.altT;}else{b.flags=G.flags;b.t=G.flagT;}
+    b.splits=G.splits.slice();ch=true;
+    GHOST[MODE]={s:G.rec.slice()};try{localStorage.setItem('mobbyhill-ghost-'+MODE,JSON.stringify(GHOST[MODE]));}catch(e){}
+  }
+  if(G.dist>b.dist){b.dist=G.dist;ch=true;}
+  if(ch)try{localStorage.setItem('mobbyhill-best3',JSON.stringify(BESTS));}catch(e){}
 }
+function fmtAlt(a){return a.toFixed(1)+' m';}
+function runText(){return CLIMBT?'Climbed '+fmtAlt(G.maxAlt):G.flags?fmtRun(G.flags,G.flagT):'No flags yet';}
+function bestText(b){b=b||G.best;return CLIMBT?(b.alt?fmtAlt(b.alt):'none yet'):(b.flags?fmtRun(b.flags,b.t):'none yet');}
+// damage mode. hits add damage that stays until you pay for repairs in the garage
+function dmgK(){return OPT.damage?SHOP.dmg:0;}
+function hurt(a){if(!OPT.damage||!G.alive||a<=0)return;SHOP.dmg=Math.min(1,SHOP.dmg+a);saveShop();if(a>.03)msg('Damage '+Math.round(SHOP.dmg*100)+'%',1.6,true);}
 function fmtT(t){t=Math.max(0,t);const m=Math.floor(t/60),s=t-m*60;return m+':'+(s<10?'0':'')+s.toFixed(1);}
 function fmtRun(f,t){return f+(f===1?' flag in ':' flags in ')+fmtT(t);}
 // one number for the score hub: more flags always wins, then less time. flags*100000 + (99999 - tenths of a second)
@@ -283,7 +328,7 @@ function sampleGround(){
 function fit(h){return{phi:Math.atan2((h[1]+h[3])-(h[0]+h[2]),4*T),th:Math.atan2((h[0]+h[1])-(h[2]+h[3]),4*A),y:(h[0]+h[1]+h[2]+h[3])/4,tw:(h[0]-h[1]-h[2]+h[3])/4};}
 
 function resetRig(full){
-  if(full){G.x=0;G.z=0;G.yaw=0;G.dist=0;G.flags=0;G.next=0;G.flips=0;G.runT0=null;G.runT=0;G.flagT=0;G.splits=[];G.ended=false;G.sentKey='';}
+  if(full){G.x=0;G.z=0;G.yaw=0;G.dist=0;G.flags=0;G.next=0;G.flips=0;G.runT0=null;G.runT=0;G.flagT=0;G.splits=[];G.ended=false;G.sentKey='';G.fuel=1;G.outT=0;G.alt=0;G.maxAlt=0;G.altT=0;G.rec=[];G.recT=0;G.endWhy='';G.surf=0;G.depth=0;}
   const h=sampleGround(),f=fit(h);
   G.y=f.y;G.yG=f.y;G.phiG=f.phi;G.thG=f.th;G.roll=f.phi;G.pitch=f.th;G.vy=0;G.v=0;G.vh=0;
   G.rollRate=G.pitchRate=G.yawRate=0;G.air=false;G.lR=G.lRv=G.sR=G.lP=G.lPv=G.sP=0;G.gwr=G.gwp=0;
@@ -309,7 +354,7 @@ function updLift(ax,base,half,off,h,Fu,Fw,k2,jolt,dt){
     L+=Lv*dt;
   }else{
     const a=liftAcc(s,L,base,half,off,h,Fu,Fw,k2)-Lv*.8;Lv+=a*dt;L+=Lv*dt;
-    if(L<=0){if(Lv<-1.1){thump(Math.min(1,-Lv/4));G.shake=Math.max(G.shake,.12);}L=0;Lv=0;s=0;}
+    if(L<=0){if(Lv<-1.1){thump(Math.min(1,-Lv/4));G.shake=Math.max(G.shake,.12);hurt(.008);}L=0;Lv=0;s=0;}
   }
   G['l'+ax]=L;G['l'+ax+'v']=Lv;G['s'+ax]=s;
 }
@@ -350,8 +395,8 @@ function groundStep(dt,gas,brk){
   const fmax=MU*GR*Math.cos(G.thG)*(G.lR>.05||G.lP>.05?.42:1)*grip;
   let a=-GR*Math.sin(G.thG);G.spinOut=false;
   if(dir&&wheelsDown){
-    const vmax=dir>0?24:7,sp=dir*G.v;
-    let want=G.throttle*7.8*POWER*clamp(1-sp/vmax,0,1);if(!brk&&sp<1.2&&G.throttle<.1)want=Math.max(want,1.1);
+    const vmax=(dir>0?24:7)*(1-.3*dmgK()),sp=dir*G.v,dry=MODES[MODE].fuel&&G.fuel<=0;
+    let want=dry?0:G.throttle*7.8*POWER*(1-.5*dmgK())*clamp(1-sp/vmax,0,1);if(!dry&&!brk&&sp<1.2&&G.throttle<.1)want=Math.max(want,1.1);
     if(want>fmax){G.spinOut=G.throttle>.5;want=fmax;}
     a+=dir*want;
   }
@@ -361,7 +406,7 @@ function groundStep(dt,gas,brk){
   G.v=v;G.aLong+=((v-v0)/dt-G.aLong)*Math.min(1,dt*12);
 
   // steering, with a grip limit so hard turns slide instead of turning tighter
-  G.delta=G.wheelDeg/540*34*DEG/(1+Math.pow(Math.abs(G.v)/18,2)*.6);
+  G.delta=G.wheelDeg/540*34*DEG/(1+Math.pow(Math.abs(G.v)/18,2)*.6)+dmgK()*.1*SHOP.pull;
   let w=G.v*Math.tan(G.delta)/(2*A);
   const latMax=MU*GR*Math.cos(G.phiG)*grip;G.slide=false;
   if(Math.abs(G.v*w)>latMax){w=Math.sign(w)*latMax/Math.max(.1,Math.abs(G.v));G.slide=Math.abs(G.v)>4;}
@@ -375,7 +420,7 @@ function groundStep(dt,gas,brk){
   const rk=rockBlock();
   if(rk){G.x=x0;G.z=z0;const hit=Math.abs(G.v);
     if(hit>12)return crash('Hit a boulder','pitch');
-    if(hit>2){thump(Math.min(1,hit/8));G.shake=Math.max(G.shake,.25);}
+    if(hit>2){thump(Math.min(1,hit/8));G.shake=Math.max(G.shake,.25);hurt(hit*.012);}
     G.v=-G.v*.15;G.vh=G.v*Math.cos(G.thG);
     if(now()>G.blockMsgT){G.blockMsgT=now()+5;msg('Too tall to climb. '+(SHOP.eq.lift<2?'A lift kit climbs higher':'Go around'),2.5,true);}
   }
@@ -424,7 +469,7 @@ function airStep(dt,gas,brk){
     if(Math.abs(dphi)>1.05||Math.abs(dth)>1.15){G.roll=normA(G.roll);G.pitch=normA(G.pitch);
       return crash(Math.abs(dth)>Math.abs(dphi)?(dth<0?'Landed on the nose':'Landed on the tail'):'Landed on its side',Math.abs(dth)>Math.abs(dphi)?'pitch':'roll');}
     if(vin>12.5&&G.airT>.25)return crash('Landed too hard','pitch');
-    if(vin>3.5){thump(Math.min(1,vin/10));G.shake=Math.max(G.shake,Math.min(.5,vin*.04));}
+    if(vin>3.5){thump(Math.min(1,vin/10));G.shake=Math.max(G.shake,Math.min(.5,vin*.04));hurt((vin-4)*.03);}
     G.lR=G.lP=G.lRv=G.lPv=0;G.sR=G.sP=0;
     if(Math.abs(dphi)>.03){G.sR=dphi>0?-1:1;G.lR=Math.abs(dphi);G.lRv=clamp(-G.sR*G.rollRate*.4-vin*.12,-1.5,1.2);}
     if(Math.abs(dth)>.03){G.sP=dth>0?-1:1;G.lP=Math.abs(dth);G.lPv=clamp(-G.sP*G.pitchRate*.4-vin*.15,-1.5,1.2);}
@@ -437,7 +482,7 @@ function crash(why,axis){
   const big=Math.abs(axis==='roll'?G.rollRate:G.pitchRate)>2.6;
   G.wreck={tr:axis==='roll'?Math.sign(G.roll||1)*(big?Math.PI:Math.PI/2):G.roll*.3,tp:axis==='pitch'?Math.sign(G.pitch||1)*Math.PI:0,vy:0};
   if(axis==='pitch'&&Math.abs(G.roll)>.6)G.wreck.tr=Math.sign(G.roll)*Math.PI/2;
-  crashSnd();G.shake=.6;msg(why,3,true);saveBest();
+  if(why!=='Engine flooded')hurt(.2);crashSnd();G.shake=.6;msg(why,3,true);saveBest();
   setTimeout(()=>{if(!G.alive)showCard();},1700);
 }
 function wreckStep(dt){
@@ -448,23 +493,29 @@ function wreckStep(dt){
   G.lR=G.lP=0;
 }
 function showCard(){
-  $('cardT').textContent=G.ended?'Run over':G.crashWhy;
-  $('cardS').textContent=G.flags?fmtRun(G.flags,G.flagT):'No flags yet';
+  $('cardT').textContent=G.ended?(G.endWhy||'Run over'):G.crashWhy;
+  $('cardS').textContent=runText();
   $('cardD').innerHTML='';
-  const lines=['Distance '+fmtD(G.dist)+(G.flips?'  ·  Flips '+G.flips:''),'Best here: '+(G.best.flags?fmtRun(G.best.flags,G.best.t):'none yet')];
+  const lines=[MODES[MODE].n+'  ·  Distance '+fmtD(G.dist)+(G.flips?'  ·  Flips '+G.flips:''),'Best here: '+bestText()];
   lines.forEach((t,i)=>{if(i)$('cardD').appendChild(document.createElement('br'));$('cardD').appendChild(document.createTextNode(t));});
   $('cFlip').style.display=G.ended?'none':'';
-  const key=G.flags+':'+G.flagT;$('bSubmit').disabled=!G.flags||G.sentKey===key||!window.Scores;
-  $('subMsg').textContent=!window.Scores?'Score hub unreachable':!G.flags?'Reach a flag to post a score':G.sentKey===key?'Posted':'';
+  const key=runKey(),ok=canPost();$('bSubmit').disabled=!ok||G.sentKey===key||!window.Scores;
+  $('subMsg').textContent=!window.Scores?'Score hub unreachable':!ok?(CLIMBT?'Climb at least 1 m to post a score':'Reach a flag to post a score'):G.sentKey===key?'Posted':'';
   $('card').classList.add('on');
 }
-function endRun(){if(G.ended)return;G.ended=true;G.gear='N';saveBest();showCard();}
+function endRun(why){if(G.ended)return;G.ended=true;G.endWhy=why||'Run over';G.gear='N';saveBest();if(why)msg(why,3,true);showCard();}
+function canPost(){return CLIMBT?G.maxAlt>=1:G.flags>0;}
+function runKey(){return CLIMBT?'a'+Math.round(G.maxAlt*10):G.flags+':'+G.flagT;}
+// one number per run for the score hub. flag modes pack flags*100000 + (99999 - tenths of a second). climb modes post tenths of a meter
+function runScore(){return CLIMBT?Math.max(1,Math.round(G.maxAlt*10)):packScore(G.flags,G.flagT);}
+function runMs(){return Math.max(1000,Math.round((CLIMBT?G.altT:G.flagT)*1000));}
+function boardText(n){if(CLIMBT)return fmtAlt(n/10);const u=unpackScore(n);return fmtRun(u.f,u.t);}
 function submitScore(){
-  if(!window.Scores||!G.flags)return;
+  if(!window.Scores||!canPost())return;
   const tag=window.Scores.cleanTag($('tagIn').value);if(!tag.trim()){$('subMsg').textContent='Type a three letter tag';return;}
   try{localStorage.setItem('mobbyhill-tag',tag.trim());}catch(e){}
-  const key=G.flags+':'+G.flagT;$('bSubmit').disabled=true;$('subMsg').textContent='Posting...';
-  window.Scores.submit({game:'mobbyhill',tag,score:packScore(G.flags,G.flagT),duration:Math.max(1000,Math.round(G.flagT*1000))}).then(r=>{
+  const key=runKey();$('bSubmit').disabled=true;$('subMsg').textContent='Posting...';
+  window.Scores.submit({game:MODES[MODE].slug,tag,score:runScore(),duration:runMs()}).then(r=>{
     if(r&&r.ok){G.sentKey=key;$('subMsg').textContent='Posted. Rank #'+r.rank;G.myId=r.entry&&r.entry.id;}
     else{$('bSubmit').disabled=false;$('subMsg').textContent={slow_down:'Wait ten seconds and try again',tag_rejected:'Pick a different tag',offline:'Score hub unreachable'}[r&&r.error]||'Not posted ('+((r&&r.error)||'error')+')';}
   });
@@ -491,27 +542,35 @@ function renderGarage(){
     });
     d.append(n,nd,row);box.appendChild(d);
   });
+  if(SHOP.dmg>.005){const d=document.createElement('div');d.className='part';
+    const n=document.createElement('div');n.className='pn';n.textContent='Repairs';
+    const nd=document.createElement('div');nd.className='pd';nd.textContent='Damage '+Math.round(SHOP.dmg*100)+'%. Used in damage mode.';
+    const cost=Math.ceil(SHOP.dmg*400),b=document.createElement('button');b.className='opt';b.style.width='100%';
+    b.textContent=SHOP.bank>=cost?'Fix it all  $'+cost:'Fix what $'+SHOP.bank+' covers';
+    b.addEventListener('click',()=>{const c=Math.ceil(SHOP.dmg*400);if(SHOP.bank>=c){SHOP.bank-=c;SHOP.dmg=0;}else{SHOP.dmg=Math.max(0,SHOP.dmg-SHOP.bank/400);SHOP.bank=0;}SHOP.pull=Math.random()<.5?-1:1;saveShop();renderGarage();});
+    const row=document.createElement('div');row.className='opts';row.appendChild(b);d.append(n,nd,row);box.appendChild(d);}
   $('gStats').innerHTML='';
   ['Tips over at '+Math.round(Math.atan2(T,CGH)/DEG)+'° side slope','Climbs rocks up to '+CLIMB.toFixed(2)+' m','Wades water up to '+INTAKE.toFixed(2)+' m'].forEach((t,i)=>{if(i)$('gStats').appendChild(document.createElement('br'));$('gStats').appendChild(document.createTextNode(t));});
 }
 function closeGarage(){$('garage').classList.remove('on');if(G.garageDirty){G.garageDirty=false;newRun();msg('New parts on. Fresh run',2.5);}}
 function openBoard(){
   $('board').classList.add('on');const box=$('boardList');box.replaceChildren();
-  $('boardLoc').textContent='Best on this phone: '+(G.best.flags?fmtRun(G.best.flags,G.best.t):'none yet');
+  $('boardTitle').textContent='MobbyHill '+MODES[MODE].n+' top runs';
+  $('boardLoc').textContent='Best on this phone: '+bestText();
   const empty=t=>{const d=document.createElement('div');d.className='empty';d.textContent=t;box.replaceChildren(d);};
   if(!window.Scores)return empty('Score hub unreachable');
   empty('Loading...');
-  window.Scores.board('mobbyhill',20).then(r=>{
+  window.Scores.board(MODES[MODE].slug,20).then(r=>{
     if(!r||!r.ok)return empty('Score hub unreachable');if(!r.board.length)return empty('No runs posted yet');
     box.replaceChildren();
-    r.board.forEach(e=>{const u=unpackScore(e.score),row=document.createElement('div');row.className='br'+(e.id===G.myId?' me':'');
+    r.board.forEach(e=>{const row=document.createElement('div');row.className='br'+(e.id===G.myId?' me':'');
       const a=document.createElement('span');a.className='n';a.textContent=e.rank;
       const b=document.createElement('span');b.className='g';b.textContent=e.tag;
-      const c=document.createElement('span');c.className='s';c.textContent=fmtRun(u.f,u.t);
+      const c=document.createElement('span');c.className='s';c.textContent=boardText(e.score);
       row.append(a,b,c);box.appendChild(row);});
   });
 }
-function flipBack(){const x=G.x,z=G.z,y=G.yaw;G.flips++;resetRig(false);G.x=x;G.z=z;G.yaw=y;resetRig(false);msg('Back on four wheels',2);}
+function flipBack(){if(G.ended)return;const x=G.x,z=G.z,y=G.yaw;G.flips++;hurt(.03);resetRig(false);G.x=x;G.z=z;G.yaw=y;resetRig(false);msg('Back on four wheels',2);}
 function newRun(){resetRig(true);msg('Shift to D and hold Gas',3);}
 
 function step(dt){
@@ -532,12 +591,25 @@ function step(dt){
   // the run clock starts the first time the rig moves and stops when the run is over
   if(G.runT0===null&&Math.abs(G.v)>.3&&G.alive)G.runT0=0;
   if(G.runT0!==null&&!G.ended)G.runT+=dt;
+  // fuel burns with throttle and soft ground. empty tank means no drive, and the run ends once you roll to a stop
+  if(MODES[MODE].fuel&&G.runT0!==null&&G.alive&&!G.ended){
+    const tank=SHOP.eq.tank?1.5:1;
+    G.fuel=Math.max(0,G.fuel-(.012+G.throttle*.034*(SHOP.eq.engine?1.15:1)+(G.surf?.006:0))/tank*dt);
+    if(G.fuel<=0){if(G.outT===0)msg('Out of fuel',2.5,true);G.outT+=dt;if(Math.abs(G.v)<.3&&G.outT>1.5)endRun('Out of fuel');}
+  }
+  if(G.alive){const y=G.air?G.y:G.yG;G.alt=y;if(CLIMBT&&y>G.maxAlt){G.maxAlt=y;G.altT=G.runT;}}
+  if(OPT.damage&&SHOP.dmg>=1&&G.alive&&!G.ended)endRun('Broke down');
+  if(G.runT0!==null&&G.alive&&!G.ended&&G.runT>=G.recT&&G.rec.length<27000){
+    G.recT+=GDT;const P=bodyPose();const r2=v=>Math.round(v*100)/100;
+    G.rec.push(r2(P.O[0]),r2(P.O[1]),r2(P.O[2]),Math.round(G.yaw*1000)/1000,Math.round(G.pitch*1000)/1000,Math.round(G.roll*1000)/1000);
+  }
   if(G.alive){
     const fp=flagPos(G.next);if(Math.hypot(fp.x-G.x,fp.z-G.z)<7){
       G.flags++;G.next++;G.flagT=G.runT;G.splits.push(G.runT);chime();
       const earn=40+10*G.flags;SHOP.bank+=earn;saveShop();
-      const bs=G.best.splits[G.flags-1];let cmp='';if(bs!=null){const d=G.runT-bs;cmp='  '+(d<0?'-':'+')+Math.abs(d).toFixed(1)+'s';}
-      msg('Flag '+G.flags+'  '+fmtT(G.runT)+cmp+'  +$'+earn,3,bs!=null&&G.runT>bs);saveBest();
+      if(MODES[MODE].fuel){G.fuel=Math.min(1,G.fuel+.3);G.outT=0;}
+      const bs=CLIMBT?null:G.best.splits[G.flags-1];let cmp='';if(bs!=null){const d=G.runT-bs;cmp='  '+(d<0?'-':'+')+Math.abs(d).toFixed(1)+'s';}
+      msg('Flag '+G.flags+'  '+fmtT(G.runT)+(CLIMBT?'':cmp)+'  +$'+earn+(MODES[MODE].fuel?'  +fuel':''),3,!CLIMBT&&bs!=null&&G.runT>bs);saveBest();
     }
   }
 }
@@ -724,10 +796,22 @@ function drawFlags(pa,pb){
     segW(p,[f.x,f.y,f.z],[f.x,f.y+8,f.z]);
     const wv=Math.sin(t*3+i)*.3;
     segW(p,[f.x,f.y+8,f.z],[f.x+2.2,f.y+7.2+wv,f.z+.3]);segW(p,[f.x+2.2,f.y+7.2+wv,f.z+.3],[f.x,f.y+6.3,f.z]);
+    if(MODES[MODE].fuel){const cx=f.x+.9,cz=f.z,cy=f.y;const c=[[-.25,0,-.12],[.25,0,-.12],[.25,0,.12],[-.25,0,.12]];
+      for(let q=0;q<4;q++){const a=c[q],b=c[(q+1)%4];segW(p,[cx+a[0],cy,cz+a[2]],[cx+b[0],cy,cz+b[2]]);segW(p,[cx+a[0],cy+.7,cz+a[2]],[cx+b[0],cy+.7,cz+b[2]]);segW(p,[cx+a[0],cy,cz+a[2]],[cx+a[0],cy+.7,cz+a[2]]);}
+      segW(p,[cx+.1,cy+.7,cz],[cx+.2,cy+.9,cz]);segW(p,[cx-.25,cy,cz-.12],[cx+.25,cy+.7,cz+.12]);}
     for(let k=0;k<12;k++){const a1=k/12*6.283,a2=(k+1)/12*6.283;segW(p,[f.x+Math.cos(a1)*7,heightAt(f.x+Math.cos(a1)*7,f.z+Math.sin(a1)*7)+.1,f.z+Math.sin(a1)*7],[f.x+Math.cos(a2)*7,heightAt(f.x+Math.cos(a2)*7,f.z+Math.sin(a2)*7)+.1,f.z+Math.sin(a2)*7]);}
   }
 }
 
+function drawGhost(path){
+  if(!OPT.ghost||G.runT0===null)return;const gh=ghostFor(MODE);if(!gh||!gh.s||gh.s.length<12)return;
+  const n=gh.s.length/6,f=Math.min(n-1,G.runT/GDT),i=Math.floor(f),u=f-i,j=Math.min(n-1,i+1),s=gh.s;
+  const L=k=>s[i*6+k]+(s[j*6+k]-s[i*6+k])*u,LA=k=>s[i*6+k]+normA(s[j*6+k]-s[i*6+k])*u;
+  const P={O:[L(0),L(1),L(2)],B:basis(LA(3),LA(4),LA(5))};
+  const gd=Math.hypot(P.O[0]-G.x,P.O[2]-G.z);if(gd>260||(G.cam==='driver'&&gd<6))return;
+  for(const[a,b]of MODEL)segW(path,bw(P,a[0],a[1],a[2]),bw(P,b[0],b[1],b[2]));
+  for(const sx of[-1,1])for(const sz of[-1,1]){let prev=null;for(let k=0;k<=10;k++){const a=k/10*6.283,q=bw(P,sx*T,WR+Math.sin(a)*WR,sz*A+Math.cos(a)*WR);if(prev)segW(path,prev,q);prev=q;}}
+}
 function drawRidges(p){
   // far ring of wireframe peaks that rides along with the camera
   let prev=null;
@@ -787,6 +871,7 @@ function render(dt){
   const rp=new Path2D();drawRocks(rp,cx0,cz0,85);ctx.strokeStyle='rgba(122,92,60,.9)';ctx.lineWidth=1.3;ctx.stroke(rp);
   const fa=new Path2D(),fb=new Path2D();drawFlags(fa,fb);
   ctx.strokeStyle='rgba(150,150,150,.7)';ctx.lineWidth=1.5;ctx.stroke(fb);ctx.strokeStyle='#c8362b';ctx.lineWidth=2.2;ctx.stroke(fa);
+  const gp=new Path2D();drawGhost(gp);ctx.strokeStyle='rgba(42,98,176,.42)';ctx.lineWidth=1.4;ctx.stroke(gp);
   const cab=G.alive&&G.cam==='driver',jp=new Path2D();drawRig(P,jp,cab);
   ctx.strokeStyle=G.alive?'#d2601a':'#c8362b';ctx.lineWidth=G.cam==='driver'&&G.alive?2.2:1.8;ctx.stroke(jp);
   if(G.alive&&G.cam==='driver')drawDashHud();
@@ -865,7 +950,14 @@ function hud(dt){
   tiltGauge('gRoll',G.roll,G.air?G.roll:effRoll(),l.R,l.L,'Roll',false);
   tiltGauge('gPitch',G.pitch,G.air?G.pitch:effPitch(),l.F,l.B,'Pitch',true);
   hudT-=dt;if(hudT>0)return;hudT=.1;
-  $('cTime').textContent=fmtT(G.runT);$('cFlags').textContent=G.flags+(G.flags?' · '+fmtT(G.flagT):'');$('cBest').textContent=G.best.flags?G.best.flags+' · '+fmtT(G.best.t):'none';
+  $('cTime').textContent=fmtT(G.runT);
+  $('kFlags').textContent=CLIMBT?'Height':'Flags';
+  $('cFlags').textContent=CLIMBT?fmtAlt(Math.max(0,G.alt))+' / '+fmtAlt(G.maxAlt):G.flags+(G.flags?' · '+fmtT(G.flagT):'');
+  $('cBest').textContent=CLIMBT?(G.best.alt?fmtAlt(G.best.alt):'none'):(G.best.flags?G.best.flags+' · '+fmtT(G.best.t):'none');
+  $('chFuel').style.display=MODES[MODE].fuel?'':'none';
+  $('fuelFill').style.width=Math.round(G.fuel*100)+'%';$('fuelFill').style.background=G.fuel<.2?'#c8362b':G.fuel<.4?'#c27a12':'#3f8a3f';
+  $('chDmg').style.display=OPT.damage?'':'none';$('cDmg').textContent=Math.round(SHOP.dmg*100)+'%';
+  $('ticker').style.top=($('top').offsetHeight+6)+'px';
   const f=flagPos(G.next),dx=f.x-G.x,dz=f.z-G.z;$('cNext').textContent=Math.round(Math.hypot(dx,dz))+' m';
   $('arrow').style.transform='rotate('+normA(Math.atan2(dx,dz)-G.yaw)/DEG+'deg)';
   document.querySelectorAll('.gear').forEach(b=>b.classList.toggle('on',b.dataset.g===G.gear));
@@ -890,7 +982,7 @@ function startEngine(){const a=ac();if(!a||eng)return;const o=a.createOscillator
 function engineTick(){if(!eng)return;const a=AC,t=a.currentTime,sp=Math.abs(G.air?G.vh:G.v);
   const rpm=clamp(.18+sp/26+G.throttle*.35+(G.spinOut||G.air?G.throttle*.3:0),0,1.3);
   eng.o.frequency.setTargetAtTime(32+rpm*95,t,.06);eng.o2.frequency.setTargetAtTime(16+rpm*47,t,.06);eng.lp.frequency.setTargetAtTime(300+rpm*900,t,.08);
-  eng.g.gain.setTargetAtTime(G.snd&&G.alive&&G.started?.035+.05*G.throttle:0,t,.08);}
+  eng.g.gain.setTargetAtTime(G.snd&&G.alive&&G.started&&!(MODES[MODE].fuel&&G.fuel<=0)?.035+.05*G.throttle:0,t,.08);}
 function tone(f,dur,type,vol,f2){const a=G.snd&&ac();if(!a)return;const t=a.currentTime,o=a.createOscillator(),g=a.createGain();o.type=type||'sine';o.frequency.setValueAtTime(f,t);if(f2)o.frequency.exponentialRampToValueAtTime(f2,t+dur);
   g.gain.setValueAtTime(vol||.08,t);g.gain.exponentialRampToValueAtTime(.0001,t+dur);o.connect(g);g.connect(a.destination);o.start(t);o.stop(t+dur+.02);}
 function noise(dur,vol,freq){const a=G.snd&&ac();if(!a)return;const n=Math.floor(a.sampleRate*dur),bf=a.createBuffer(1,n,a.sampleRate),d=bf.getChannelData(0);for(let i=0;i<n;i++)d[i]=(Math.random()*2-1)*Math.pow(1-i/n,2);
@@ -928,7 +1020,7 @@ function setupInput(){
   $('bZero').addEventListener('click',()=>{G.tiltZero=G.tiltRaw;G.tiltFBZero=G.tiltFB;msg('Tilt zeroed. Hold the phone like this to sit straight',2.5);});
   $('bSnd').addEventListener('click',()=>{G.snd=!G.snd;$('bSnd').classList.toggle('on',G.snd);if(G.snd){ac();startEngine();}});
   $('bFlip').addEventListener('click',()=>{if(G.ended)return;if(Math.abs(G.v)>1&&G.alive){msg('Stop first',1.5);return;}flipBack();});
-  $('bNew').addEventListener('click',newRun);
+  $('bNew').addEventListener('click',openMenu);
   $('bEnd').addEventListener('click',()=>{if(G.ended)return;endRun();});
   $('bBoard').addEventListener('click',openBoard);
   $('bGarage').addEventListener('click',openGarage);$('garageClose').addEventListener('click',closeGarage);$('cBoard').addEventListener('click',openBoard);
@@ -974,9 +1066,22 @@ function frame(){
   render(dt);hud(dt);engineTick();warnBeep();
   requestAnimationFrame(frame);
 }
-function begin(tilt){$('start').classList.add('hide');G.started=true;ac();startEngine();if(tilt)enableTilt();msg('Shift to D and hold Gas',3);}
+function setMode(m){MODE=m;CLIMBT=MODES[m].climb;G.best=BESTS[m];ROCKS.clear();saveOpts();renderMenu();}
+function renderMenu(){
+  const box=$('modes');box.replaceChildren();
+  for(const m in MODES){const b=document.createElement('button');b.textContent=MODES[m].n;b.className=m===MODE?'on':'';b.addEventListener('click',()=>setMode(m));box.appendChild(b);}
+  $('modeNote').textContent=MODES[MODE].note;
+  $('tGhost').textContent='Ghost '+(OPT.ghost?'on':'off');$('tGhost').classList.toggle('on',OPT.ghost);
+  $('tDmg').textContent='Damage '+(OPT.damage?'on':'off');$('tDmg').classList.toggle('on',OPT.damage);
+  $('sBest').textContent='Best '+MODES[MODE].n+': '+bestText()+(OPT.damage&&SHOP.dmg>.005?'  ·  Damage '+Math.round(SHOP.dmg*100)+'%':'');
+  $('sTilt').textContent=G.tiltOn?'Start':'Start with tilt';$('sPlain').style.display=G.tiltOn?'none':'';
+}
+function openMenu(){G.started=false;renderMenu();$('start').classList.remove('hide');}
+$('tGhost').addEventListener('click',()=>{OPT.ghost=!OPT.ghost;saveOpts();renderMenu();});
+$('tDmg').addEventListener('click',()=>{OPT.damage=!OPT.damage;saveOpts();renderMenu();});
+function begin(tilt){$('start').classList.add('hide');G.started=true;ac();startEngine();if(tilt&&!G.tiltOn)enableTilt();resetRig(true);msg('Shift to D and hold Gas',3);}
 $('sTilt').addEventListener('click',()=>begin(true));$('sPlain').addEventListener('click',()=>begin(false));
-$('sBest').textContent=G.best.flags?'Best: '+fmtRun(G.best.flags,G.best.t):'';
+renderMenu();
 setupInput();resetRig(true);requestAnimationFrame(frame);
 </script>
 </body>
