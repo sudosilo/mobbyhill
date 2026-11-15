@@ -8,12 +8,13 @@
 <meta name="theme-color" content="#e9e6dc">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%23eceae3'/%3E%3Cpath d='M2 24 L10 12 L16 18 L22 8 L30 24 Z' fill='none' stroke='%23d2601a' stroke-width='2.4'/%3E%3C/svg%3E">
 <!--
-MobbyHill v1. Written in chat with Claude Opus 5.5, Nov 14 2026.
+MobbyHill v2. v1 written in chat with Claude Opus 5.5, Nov 14 2026.
 Wireframe 4x4 on wireframe terrain. Driver seat camera with hood, dash and steering wheel, chase camera, top camera.
 Controls carried over from the dock yard truck game: drag steering wheel, D N R gears, Brake and Gas pedals.
 Phone tilt shifts the driver's weight left or right. The center of gravity moves with the driver,
 so leaning toward the low side brings the rollover point closer and leaning toward the high side pushes it away.
 Rollover and flip use a pivot model: the rig rotates about the downhill wheels when the tipping moment wins.
+v2 adds a run clock, flag split times against your best run, and posting runs to the shared score hub (flags first, then time).
 -->
 <style>
 :root{
@@ -35,7 +36,7 @@ button{font:inherit;color:inherit;cursor:pointer;touch-action:manipulation}
 .chip .v{font-size:13px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #arrow{display:inline-block;color:var(--red);font-weight:900;transition:transform .1s}
 
-#ticker{position:absolute;left:50%;transform:translateX(-50%);top:calc(env(safe-area-inset-top,0px) + 92px);width:max-content;max-width:94vw;background:var(--yellow);border:2px solid #b58d12;border-radius:6px;padding:4px 12px;font-size:14px;font-weight:800;text-align:center;color:#3a2f05;opacity:1;transition:opacity .3s}
+#ticker{position:absolute;left:50%;transform:translateX(-50%);top:calc(env(safe-area-inset-top,0px) + 112px);width:max-content;max-width:94vw;background:var(--yellow);border:2px solid #b58d12;border-radius:6px;padding:4px 12px;font-size:14px;font-weight:800;text-align:center;color:#3a2f05;opacity:1;transition:opacity .3s}
 #ticker.off{opacity:0}
 #ticker.bad{background:#f3c9c4;border-color:var(--red);color:#5a1510}
 
@@ -67,6 +68,7 @@ button{font:inherit;color:inherit;cursor:pointer;touch-action:manipulation}
 #pBrake.down{background:repeating-linear-gradient(0deg,#f3c9c4 0 9px,#e7aaa2 9px 12px);border-color:var(--red)}
 #pGas.down{background:repeating-linear-gradient(0deg,#cfe8cf 0 9px,#b3d8b3 9px 12px);border-color:var(--green)}
 
+input{user-select:text;-webkit-user-select:text}
 #card{position:absolute;left:50%;top:60%;transform:translate(-50%,-50%);background:var(--panel);border:3px solid var(--red);border-radius:10px;padding:14px 18px;text-align:center;width:min(300px,88vw);display:none;box-shadow:0 5px 0 #a3483f;pointer-events:auto}
 #card.on{display:block}
 #card .t{font-size:24px;font-weight:900;color:var(--red)}
@@ -74,6 +76,22 @@ button{font:inherit;color:inherit;cursor:pointer;touch-action:manipulation}
 #cardBtns{display:flex;gap:8px;margin-top:12px}
 #cardBtns button{flex:1;border:2px solid var(--edge);background:#fff;border-radius:8px;padding:9px 4px;font-size:14px;font-weight:800}
 #cardBtns button.go{background:var(--yellow);border-color:#b58d12}
+#card .big{font-size:22px;font-weight:900;color:var(--ink);margin-top:4px}
+#sub{display:flex;gap:6px;margin-top:10px}
+#tagIn{width:76px;border:2px solid var(--edge);border-radius:8px;padding:8px 6px;font:inherit;font-size:18px;font-weight:900;text-align:center;text-transform:uppercase;background:#fff;color:var(--ink)}
+#bSubmit{flex:1;border:2px solid #173e75;background:#2a62b0;color:#fff;border-radius:8px;font-size:14px;font-weight:800}
+#bSubmit:disabled{opacity:.45}
+#subMsg{font-size:12px;font-weight:700;color:var(--blue);margin-top:6px;min-height:15px}
+#board{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);background:var(--panel);border:3px solid var(--blue);border-radius:10px;padding:12px 14px;width:min(320px,90vw);display:none;pointer-events:auto;box-shadow:0 5px 0 #173e75;z-index:5}
+#board.on{display:block}
+#board .bt{font-size:17px;font-weight:900;color:var(--blue);text-align:center}
+#boardList{margin-top:8px;display:grid;gap:3px;max-height:52vh;overflow-y:auto}
+.br{display:flex;gap:8px;align-items:center;background:#fff;border:1px solid var(--edge);border-radius:6px;padding:5px 8px;font-size:13px}
+.br .n{width:22px;font-weight:900;color:var(--ink2)}.br .g{font-weight:900;width:38px}.br .s{flex:1;text-align:right;font-weight:800}
+.br.me{border-color:var(--orange);background:#fbe6d6}
+#boardList .empty{font-size:13px;color:var(--ink2);text-align:center;padding:10px}
+#board .loc{font-size:12px;color:var(--ink2);text-align:center;margin-top:8px}
+#boardClose{margin-top:10px;width:100%;border:2px solid var(--edge);background:#fff;border-radius:8px;padding:9px;font-size:14px;font-weight:800}
 
 #start{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(238,240,236,.86);z-index:20;padding:16px}
 #start.hide{display:none}
@@ -94,7 +112,7 @@ button{font:inherit;color:inherit;cursor:pointer;touch-action:manipulation}
     <canvas class="gauge" id="gRoll"></canvas>
     <canvas class="gauge" id="gPitch"></canvas>
     <div id="chips">
-      <div class="chip"><span class="k">Dist</span><span class="v" id="cDist">0 m</span></div>
+      <div class="chip"><span class="k">Time</span><span class="v" id="cTime">0:00.0</span></div>
       <div class="chip"><span class="k">Flags</span><span class="v" id="cFlags">0</span></div>
       <div class="chip"><span class="k">Next</span><span class="v"><span id="arrow">▲</span> <span id="cNext">0 m</span></span></div>
       <div class="chip"><span class="k">Best</span><span class="v" id="cBest">0</span></div>
@@ -108,6 +126,8 @@ button{font:inherit;color:inherit;cursor:pointer;touch-action:manipulation}
     <button class="sbtn" id="bZero">Zero</button>
     <button class="sbtn on" id="bSnd">Sound</button>
     <button class="sbtn" id="bFlip">Flip</button>
+    <button class="sbtn" id="bEnd">End</button>
+    <button class="sbtn" id="bBoard">Scores</button>
     <button class="sbtn" id="bNew">New</button>
   </div>
 
@@ -133,8 +153,11 @@ button{font:inherit;color:inherit;cursor:pointer;touch-action:manipulation}
     </div>
   </div>
 
-  <div id="card"><div class="t" id="cardT">Rolled it</div><div class="d" id="cardD"></div>
-    <div id="cardBtns"><button id="cFlip" class="go">Flip it back</button><button id="cNew">New run</button></div></div>
+  <div id="card"><div class="t" id="cardT">Rolled it</div><div class="big" id="cardS"></div><div class="d" id="cardD"></div>
+    <div id="sub"><input id="tagIn" maxlength="3" placeholder="ABC" autocomplete="off" autocapitalize="characters" spellcheck="false" aria-label="Three letter tag"><button id="bSubmit">Submit score</button></div>
+    <div id="subMsg"></div>
+    <div id="cardBtns"><button id="cFlip" class="go">Flip it back</button><button id="cBoard">Scores</button><button id="cNew">New run</button></div></div>
+  <div id="board"><div class="bt">MobbyHill top runs</div><div id="boardList"></div><div class="loc" id="boardLoc"></div><button id="boardClose">Close</button></div>
 </div>
 
 <div id="start">
@@ -147,6 +170,7 @@ button{font:inherit;color:inherit;cursor:pointer;touch-action:manipulation}
   </div>
 </div>
 
+<script src="https://2026-10-30-orange-scores.vercel.app/sdk.js"></script>
 <script>
 'use strict';
 const $=id=>document.getElementById(id);
@@ -185,11 +209,23 @@ const G={alive:true,gear:'N',gas:false,brake:false,throttle:0,wheelDeg:0,wheelHe
   cam:'driver',look:0,snd:true,started:false,
   x:0,z:0,y:0,vy:0,yaw:0,v:0,vh:0,roll:0,pitch:0,rollRate:0,pitchRate:0,yawRate:0,air:false,
   lR:0,lRv:0,sR:0,lP:0,lPv:0,sP:0,phiG:0,thG:0,yG:0,gwr:0,gwp:0,latF:0,aLong:0,
-  dist:0,flags:0,next:0,flips:0,spin:0,susp:[0,0,0,0],slide:false,spinOut:false,airT:0,
+  dist:0,flags:0,next:0,flips:0,runT0:null,runT:0,flagT:0,splits:[],ended:false,sentKey:'',spin:0,susp:[0,0,0,0],slide:false,spinOut:false,airT:0,
   msgUntil:0,shake:0,crashT:0,crashWhy:'',warnT:0,wreck:null,camP:null,orbit:0,best:{dist:0,flags:0}};
-try{const b=JSON.parse(localStorage.getItem('mobbyhill-best')||'null');if(b)G.best=b;}catch(e){}
-function saveBest(){let ch=false;if(G.flags>G.best.flags){G.best.flags=G.flags;ch=true;}if(G.dist>G.best.dist){G.best.dist=G.dist;ch=true;}
-  if(ch)try{localStorage.setItem('mobbyhill-best',JSON.stringify(G.best));}catch(e){}}
+// best run on this phone: most flags, then the fastest time to the last flag. splits are kept to compare against
+G.best={flags:0,t:0,dist:0,splits:[]};
+try{const b=JSON.parse(localStorage.getItem('mobbyhill-best2')||'null');if(b&&typeof b.flags==='number')G.best=Object.assign(G.best,b);}catch(e){}
+function better(f,t,bf,bt){return f>bf||(f===bf&&f>0&&t<bt);}
+function saveBest(){
+  let ch=false;
+  if(better(G.flags,G.flagT,G.best.flags,G.best.t)){G.best.flags=G.flags;G.best.t=G.flagT;G.best.splits=G.splits.slice();ch=true;}
+  if(G.dist>G.best.dist){G.best.dist=G.dist;ch=true;}
+  if(ch)try{localStorage.setItem('mobbyhill-best2',JSON.stringify(G.best));}catch(e){}
+}
+function fmtT(t){t=Math.max(0,t);const m=Math.floor(t/60),s=t-m*60;return m+':'+(s<10?'0':'')+s.toFixed(1);}
+function fmtRun(f,t){return f+(f===1?' flag in ':' flags in ')+fmtT(t);}
+// one number for the score hub: more flags always wins, then less time. flags*100000 + (99999 - tenths of a second)
+function packScore(f,t){return f*100000+(99999-Math.min(99999,Math.round(t*10)));}
+function unpackScore(n){const f=Math.floor(n/100000),t=(99999-n%100000)/10;return{f,t};}
 
 function sampleGround(){
   const s=Math.sin(G.yaw),c=Math.cos(G.yaw);
@@ -199,7 +235,7 @@ function sampleGround(){
 function fit(h){return{phi:Math.atan2((h[1]+h[3])-(h[0]+h[2]),4*T),th:Math.atan2((h[0]+h[1])-(h[2]+h[3]),4*A),y:(h[0]+h[1]+h[2]+h[3])/4,tw:(h[0]-h[1]-h[2]+h[3])/4};}
 
 function resetRig(full){
-  if(full){G.x=0;G.z=0;G.yaw=0;G.dist=0;G.flags=0;G.next=0;G.flips=0;}
+  if(full){G.x=0;G.z=0;G.yaw=0;G.dist=0;G.flags=0;G.next=0;G.flips=0;G.runT0=null;G.runT=0;G.flagT=0;G.splits=[];G.ended=false;G.sentKey='';}
   const h=sampleGround(),f=fit(h);
   G.y=f.y;G.yG=f.y;G.phiG=f.phi;G.thG=f.th;G.roll=f.phi;G.pitch=f.th;G.vy=0;G.v=0;G.vh=0;
   G.rollRate=G.pitchRate=G.yawRate=0;G.air=false;G.lR=G.lRv=G.sR=G.lP=G.lPv=G.sP=0;G.gwr=G.gwp=0;
@@ -330,15 +366,48 @@ function wreckStep(dt){
   G.lR=G.lP=0;
 }
 function showCard(){
-  $('cardT').textContent=G.crashWhy;
-  $('cardD').innerHTML='Distance '+fmtD(G.dist)+'<br>Flags '+G.flags+(G.flips?'  ·  Flips '+G.flips:'')+'<br>Best '+G.best.flags+' flags, '+fmtD(G.best.dist);
+  $('cardT').textContent=G.ended?'Run over':G.crashWhy;
+  $('cardS').textContent=G.flags?fmtRun(G.flags,G.flagT):'No flags yet';
+  $('cardD').innerHTML='';
+  const lines=['Distance '+fmtD(G.dist)+(G.flips?'  ·  Flips '+G.flips:''),'Best here: '+(G.best.flags?fmtRun(G.best.flags,G.best.t):'none yet')];
+  lines.forEach((t,i)=>{if(i)$('cardD').appendChild(document.createElement('br'));$('cardD').appendChild(document.createTextNode(t));});
+  $('cFlip').style.display=G.ended?'none':'';
+  const key=G.flags+':'+G.flagT;$('bSubmit').disabled=!G.flags||G.sentKey===key||!window.Scores;
+  $('subMsg').textContent=!window.Scores?'Score hub unreachable':!G.flags?'Reach a flag to post a score':G.sentKey===key?'Posted':'';
   $('card').classList.add('on');
+}
+function endRun(){if(G.ended)return;G.ended=true;G.gear='N';saveBest();showCard();}
+function submitScore(){
+  if(!window.Scores||!G.flags)return;
+  const tag=window.Scores.cleanTag($('tagIn').value);if(!tag.trim()){$('subMsg').textContent='Type a three letter tag';return;}
+  try{localStorage.setItem('mobbyhill-tag',tag.trim());}catch(e){}
+  const key=G.flags+':'+G.flagT;$('bSubmit').disabled=true;$('subMsg').textContent='Posting...';
+  window.Scores.submit({game:'mobbyhill',tag,score:packScore(G.flags,G.flagT),duration:Math.max(1000,Math.round(G.flagT*1000))}).then(r=>{
+    if(r&&r.ok){G.sentKey=key;$('subMsg').textContent='Posted. Rank #'+r.rank;G.myId=r.entry&&r.entry.id;}
+    else{$('bSubmit').disabled=false;$('subMsg').textContent={slow_down:'Wait ten seconds and try again',tag_rejected:'Pick a different tag',offline:'Score hub unreachable'}[r&&r.error]||'Not posted ('+((r&&r.error)||'error')+')';}
+  });
+}
+function openBoard(){
+  $('board').classList.add('on');const box=$('boardList');box.replaceChildren();
+  $('boardLoc').textContent='Best on this phone: '+(G.best.flags?fmtRun(G.best.flags,G.best.t):'none yet');
+  const empty=t=>{const d=document.createElement('div');d.className='empty';d.textContent=t;box.replaceChildren(d);};
+  if(!window.Scores)return empty('Score hub unreachable');
+  empty('Loading...');
+  window.Scores.board('mobbyhill',20).then(r=>{
+    if(!r||!r.ok)return empty('Score hub unreachable');if(!r.board.length)return empty('No runs posted yet');
+    box.replaceChildren();
+    r.board.forEach(e=>{const u=unpackScore(e.score),row=document.createElement('div');row.className='br'+(e.id===G.myId?' me':'');
+      const a=document.createElement('span');a.className='n';a.textContent=e.rank;
+      const b=document.createElement('span');b.className='g';b.textContent=e.tag;
+      const c=document.createElement('span');c.className='s';c.textContent=fmtRun(u.f,u.t);
+      row.append(a,b,c);box.appendChild(row);});
+  });
 }
 function flipBack(){const x=G.x,z=G.z,y=G.yaw;G.flips++;resetRig(false);G.x=x;G.z=z;G.yaw=y;resetRig(false);msg('Back on four wheels',2);}
 function newRun(){resetRig(true);msg('Shift to D and hold Gas',3);}
 
 function step(dt){
-  const gas=(G.gas||K.gas)&&G.alive,brk=G.brake||K.brake;
+  const gas=(G.gas||K.gas)&&G.alive&&!G.ended,brk=G.brake||K.brake||G.ended;
   if(K.left)G.wheelDeg-=420*dt;if(K.right)G.wheelDeg+=420*dt;
   if(G.centering&&!G.wheelHeld){G.wheelDeg*=Math.pow(.002,dt);if(Math.abs(G.wheelDeg)<1){G.wheelDeg=0;G.centering=false;}}
   if(!G.wheelHeld&&!K.left&&!K.right&&Math.abs(G.v)>3&&!G.air)G.wheelDeg-=G.wheelDeg*Math.min(1,dt*.6*Math.abs(G.v)/10);
@@ -349,8 +418,15 @@ function step(dt){
   G.throttle=gas?Math.min(1,G.throttle+dt*1.6):Math.max(0,G.throttle-dt*3);
   if(!G.alive)wreckStep(dt);else if(G.air)airStep(dt,gas,brk);else groundStep(dt,gas,brk);
   G.spin+=G.v/WR*dt;
+  // the run clock starts the first time the rig moves and stops when the run is over
+  if(G.runT0===null&&Math.abs(G.v)>.3&&G.alive)G.runT0=0;
+  if(G.runT0!==null&&!G.ended)G.runT+=dt;
   if(G.alive){
-    const fp=flagPos(G.next);if(Math.hypot(fp.x-G.x,fp.z-G.z)<7){G.flags++;G.next++;chime();msg('Flag '+G.flags+'!',2);saveBest();}
+    const fp=flagPos(G.next);if(Math.hypot(fp.x-G.x,fp.z-G.z)<7){
+      G.flags++;G.next++;G.flagT=G.runT;G.splits.push(G.runT);chime();
+      const bs=G.best.splits[G.flags-1];let cmp='';if(bs!=null){const d=G.runT-bs;cmp='  '+(d<0?'-':'+')+Math.abs(d).toFixed(1)+'s';}
+      msg('Flag '+G.flags+'  '+fmtT(G.runT)+cmp,3,bs!=null&&G.runT>bs);saveBest();
+    }
   }
 }
 
@@ -652,7 +728,7 @@ function hud(dt){
   tiltGauge('gRoll',G.roll,G.air?G.roll:effRoll(),l.R,l.L,'Roll',false);
   tiltGauge('gPitch',G.pitch,G.air?G.pitch:effPitch(),l.F,l.B,'Pitch',true);
   hudT-=dt;if(hudT>0)return;hudT=.1;
-  $('cDist').textContent=fmtD(G.dist);$('cFlags').textContent=G.flags;$('cBest').textContent=G.best.flags+' / '+fmtD(G.best.dist);
+  $('cTime').textContent=fmtT(G.runT);$('cFlags').textContent=G.flags+(G.flags?' · '+fmtT(G.flagT):'');$('cBest').textContent=G.best.flags?G.best.flags+' · '+fmtT(G.best.t):'none';
   const f=flagPos(G.next),dx=f.x-G.x,dz=f.z-G.z;$('cNext').textContent=Math.round(Math.hypot(dx,dz))+' m';
   $('arrow').style.transform='rotate('+normA(Math.atan2(dx,dz)-G.yaw)/DEG+'deg)';
   document.querySelectorAll('.gear').forEach(b=>b.classList.toggle('on',b.dataset.g===G.gear));
@@ -712,15 +788,21 @@ function setupInput(){
   $('bTilt').addEventListener('click',()=>{if(G.tiltOn){G.tiltOn=false;msg('Tilt off. Use the arrows to lean',2);}else enableTilt();});
   $('bZero').addEventListener('click',()=>{G.tiltZero=G.tiltRaw;msg('Tilt zeroed. Hold the phone like this to sit straight',2.5);});
   $('bSnd').addEventListener('click',()=>{G.snd=!G.snd;$('bSnd').classList.toggle('on',G.snd);if(G.snd){ac();startEngine();}});
-  $('bFlip').addEventListener('click',()=>{if(Math.abs(G.v)>1&&G.alive){msg('Stop first',1.5);return;}flipBack();});
+  $('bFlip').addEventListener('click',()=>{if(G.ended)return;if(Math.abs(G.v)>1&&G.alive){msg('Stop first',1.5);return;}flipBack();});
   $('bNew').addEventListener('click',newRun);
-  $('cFlip').addEventListener('click',flipBack);$('cNew').addEventListener('click',newRun);
+  $('bEnd').addEventListener('click',()=>{if(G.ended)return;endRun();});
+  $('bBoard').addEventListener('click',openBoard);$('cBoard').addEventListener('click',openBoard);
+  $('boardClose').addEventListener('click',()=>$('board').classList.remove('on'));
+  $('bSubmit').addEventListener('click',submitScore);
+  try{$('tagIn').value=localStorage.getItem('mobbyhill-tag')||'';}catch(e){}
+  $('tagIn').addEventListener('input',()=>{$('tagIn').value=$('tagIn').value.toUpperCase().replace(/[^A-Z0-9 ]/g,'').slice(0,3);});
+  $('cFlip').addEventListener('click',()=>{if(!G.ended)flipBack();});$('cNew').addEventListener('click',newRun);
   let vPid=null,vLx=0,vTap=0;
   cv.addEventListener('pointerdown',e=>{vPid=e.pointerId;vLx=e.clientX;try{cv.setPointerCapture(e.pointerId);}catch(_){}const n=performance.now();if(n-vTap<300)G.look=0;vTap=n;});
   cv.addEventListener('pointermove',e=>{if(e.pointerId!==vPid||G.cam!=='driver')return;G.look=clamp(G.look+(e.clientX-vLx)*.006,-2.2,2.2);vLx=e.clientX;});
   const vEnd=e=>{if(e.pointerId===vPid)vPid=null;};cv.addEventListener('pointerup',vEnd);cv.addEventListener('pointercancel',vEnd);
   const KM={ArrowUp:'gas',KeyW:'gas',ArrowDown:'brake',KeyS:'brake',ArrowLeft:'left',KeyA:'left',ArrowRight:'right',KeyD:'right',KeyQ:'leanL',KeyE:'leanR'};
-  addEventListener('keydown',e=>{const k=KM[e.code];if(k){K[k]=true;e.preventDefault();}
+  addEventListener('keydown',e=>{if(e.target&&e.target.tagName==='INPUT')return;const k=KM[e.code];if(k){K[k]=true;e.preventDefault();}
     if(e.code==='Digit1')setGear('D');if(e.code==='Digit2')setGear('N');if(e.code==='Digit3')setGear('R');if(e.code==='KeyC')$('bCam').click();});
   addEventListener('keyup',e=>{const k=KM[e.code];if(k)K[k]=false;});
 }
@@ -754,7 +836,7 @@ function frame(){
 }
 function begin(tilt){$('start').classList.add('hide');G.started=true;ac();startEngine();if(tilt)enableTilt();msg('Shift to D and hold Gas',3);}
 $('sTilt').addEventListener('click',()=>begin(true));$('sPlain').addEventListener('click',()=>begin(false));
-$('sBest').textContent=G.best.flags||G.best.dist?'Best: '+G.best.flags+' flags, '+fmtD(G.best.dist):'';
+$('sBest').textContent=G.best.flags?'Best: '+fmtRun(G.best.flags,G.best.t):'';
 setupInput();resetRig(true);requestAnimationFrame(frame);
 </script>
 </body>
