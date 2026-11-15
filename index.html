@@ -8,7 +8,7 @@
 <meta name="theme-color" content="#e9e6dc">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%23eceae3'/%3E%3Cpath d='M2 24 L10 12 L16 18 L22 8 L30 24 Z' fill='none' stroke='%23d2601a' stroke-width='2.4'/%3E%3C/svg%3E">
 <!--
-MobbyHill v4. v1 written in chat with Claude Opus 5.5, Nov 14 2026.
+MobbyHill v5. v1 written in chat with Claude Opus 5.5, Nov 14 2026.
 Wireframe 4x4 on wireframe terrain. Driver seat camera with hood, dash and steering wheel, chase camera, top camera.
 Controls carried over from the dock yard truck game: drag steering wheel, D N R gears, Brake and Gas pedals.
 Phone tilt shifts the driver's weight left or right. The center of gravity moves with the driver,
@@ -17,6 +17,7 @@ Rollover and flip use a pivot model: the rig rotates about the downhill wheels w
 v2 adds a run clock, flag split times against your best run, and posting runs to the shared score hub (flags first, then time).
 v3 adds fore and aft lean (tilt or the up and down arrows) that steers pitch in the air and shifts weight on climbs, stickier suspension, a garage with lift kits, mud tires, a bigger engine and a snorkel bought with flag cash, soft sand, mud and water crossings, and boulders that only taller tires can climb.
 v4 adds a mode menu: Trail, Fuel (flags refill the tank), Hill climb (one mountain, highest point wins) and Climb plus fuel, each with its own leaderboard. Ghost replays your best run in each mode. Damage mode makes hits stick until you pay for repairs in the garage.
+v5 adds a second currency. Tokens come from the score hub wallet, 1000 every calendar week by the server clock, and buy perks (fuel can, repair kit, turbo, sticky tires) or parts. Cash from flags still buys parts on the phone.
 -->
 <style>
 :root{
@@ -99,6 +100,8 @@ input{user-select:text;-webkit-user-select:text}
 #garage.on{display:block}
 #garage .bt{font-size:18px;font-weight:900;color:var(--green);text-align:center}
 #bank{text-align:center;font-size:20px;font-weight:900;margin-top:2px}
+#tokLine{text-align:center;font-size:13px;font-weight:800;color:var(--blue);margin-top:2px}
+.sec{margin-top:12px;font-size:12px;font-weight:900;color:var(--ink2);letter-spacing:.04em;border-top:1px solid var(--edge);padding-top:6px}
 .part{margin-top:9px}.part .pn{font-size:13px;font-weight:900}.part .pd{font-size:11px;color:var(--ink2)}
 .opts{display:flex;gap:5px;margin-top:4px}
 .opt{flex:1;border:2px solid var(--edge);background:#fff;border-radius:7px;padding:7px 3px;font-size:12px;font-weight:800;line-height:1.2}
@@ -151,6 +154,7 @@ input{user-select:text;-webkit-user-select:text}
     <button class="sbtn" id="bFlip">Flip</button>
     <button class="sbtn" id="bEnd">End</button>
     <button class="sbtn" id="bBoard">Scores</button>
+    <button class="sbtn" id="bCan">Can</button>
     <button class="sbtn" id="bGarage">Garage</button>
     <button class="sbtn" id="bNew">Menu</button>
   </div>
@@ -183,7 +187,7 @@ input{user-select:text;-webkit-user-select:text}
     <div id="sub"><input id="tagIn" maxlength="3" placeholder="ABC" autocomplete="off" autocapitalize="characters" spellcheck="false" aria-label="Three letter tag"><button id="bSubmit">Submit score</button></div>
     <div id="subMsg"></div>
     <div id="cardBtns"><button id="cFlip" class="go">Flip it back</button><button id="cBoard">Scores</button><button id="cNew">New run</button></div></div>
-  <div id="garage"><div class="bt">Garage</div><div id="bank"></div><div id="parts"></div><div id="gStats"></div><div class="loc">Flags pay cash. Changing parts starts a new run.</div><button id="garageClose">Done</button></div>
+  <div id="garage"><div class="bt">Garage</div><div id="bank"></div><div id="tokLine"></div><div id="parts"></div><div id="gStats"></div><div class="loc">Flags pay cash. Changing parts starts a new run.</div><button id="garageClose">Done</button></div>
   <div id="board"><div class="bt" id="boardTitle">MobbyHill top runs</div><div id="boardList"></div><div class="loc" id="boardLoc"></div><button id="boardClose">Close</button></div>
 </div>
 
@@ -196,6 +200,7 @@ input{user-select:text;-webkit-user-select:text}
     <div class="row"><button class="tog" id="tGhost">Ghost</button><button class="tog" id="tDmg">Damage</button></div>
     <div class="row"><button class="go" id="sTilt">Start with tilt</button><button id="sPlain">Start</button></div>
     <div class="best" id="sBest"></div>
+    <div class="best" id="sTok"></div>
   </div>
 </div>
 
@@ -231,6 +236,41 @@ const PARTS=[
 let SHOP={bank:0,own:{lift:[0],tires:[0],engine:[0],snorkel:[0],tank:[0]},eq:{lift:0,tires:0,engine:0,snorkel:0,tank:0},dmg:0,pull:1};
 try{const sh=JSON.parse(localStorage.getItem('mobbyhill-shop')||'null');if(sh&&sh.own&&sh.eq){SHOP.bank=sh.bank||0;Object.assign(SHOP.own,sh.own);Object.assign(SHOP.eq,sh.eq);SHOP.dmg=sh.dmg||0;SHOP.pull=sh.pull||1;}}catch(e){}
 function saveShop(){try{localStorage.setItem('mobbyhill-shop',JSON.stringify(SHOP));}catch(e){}}
+// two currencies. cash is earned at flags and kept on the phone. tokens come from the score hub server,
+// 1000 every calendar week by the server's clock, and every token spend goes through the server
+let PID='';try{PID=localStorage.getItem('mobbyhill-pid')||'';}catch(e){}
+if(!/^[a-f0-9]{32}$/.test(PID)){const a=new Uint8Array(16);crypto.getRandomValues(a);PID=Array.from(a,b=>b.toString(16).padStart(2,'0')).join('');try{localStorage.setItem('mobbyhill-pid',PID);}catch(e){}}
+const TOK={bal:null,next:0,items:{},busy:false,err:''};
+let INV={fuelcan:0,turbo:false,sticky:false};
+try{const v=JSON.parse(localStorage.getItem('mobbyhill-inv')||'null');if(v)Object.assign(INV,v);}catch(e){}
+function saveInv(){try{localStorage.setItem('mobbyhill-inv',JSON.stringify(INV));}catch(e){}}
+const PERKS=[
+  {k:'fuelcan',n:'Fuel can',d:'Half a tank, used from the Can button in the fuel modes'},
+  {k:'repair',n:'Repair kit',d:'Fixes half of the damage right away'},
+  {k:'turbo',n:'Turbo',d:'20% more power for your next run'},
+  {k:'sticky',n:'Sticky tires',d:'15% more grip for your next run'}];
+function tokText(){if(TOK.bal===null)return TOK.err==='too_many_wallets'?'Token limit for this phone this week':'Tokens offline';
+  const ms=Math.max(0,TOK.next-Date.now()),d=Math.floor(ms/86400000),h=Math.floor(ms%86400000/3600000);
+  return TOK.bal+' tokens  ·  +1000 in '+(d?d+'d ':'')+h+'h';}
+function tokRefresh(cb){
+  if(!window.Scores){TOK.err='offline';cb&&cb();return;}
+  window.Scores.wallet('mobbyhill',PID).then(r=>{
+    if(r&&r.ok){TOK.bal=r.balance;TOK.next=r.next;TOK.items=r.items||{};TOK.err='';if(r.granted)msg('+'+r.granted+' tokens this week',3);}
+    else TOK.err=(r&&r.error)||'offline';
+    cb&&cb();
+  });
+}
+function tokSpend(item,done){
+  if(!window.Scores||TOK.busy||TOK.bal===null){$('gStats').textContent='Token server unreachable';return;}
+  TOK.busy=true;$('gStats').textContent='Spending tokens...';
+  window.Scores.spend('mobbyhill',PID,item).then(r=>{
+    TOK.busy=false;
+    if(r&&r.ok){TOK.bal=r.balance;done();renderGarage();return;}
+    if(r&&typeof r.balance==='number')TOK.bal=r.balance;
+    renderGarage();
+    $('gStats').textContent={not_enough_tokens:'Not enough tokens',slow_down:'One second, then try again',offline:'Token server unreachable'}[r&&r.error]||'Not spent ('+((r&&r.error)||'error')+')';
+  });
+}
 function applyRig(){
   const L=SHOP.eq.lift;WR=[.42,.47,.53][L];MUP=[0,.12,.24][L]+(WR-.42);CGH=.78+MUP*.9;CLIMB=WR*1.2+[0,.06,.12][L];
   POWER=SHOP.eq.engine?1.35:1;INTAKE=(SHOP.eq.snorkel?1.5:.75)+MUP;MUDT=!!SHOP.eq.tires;
@@ -286,7 +326,7 @@ const G={alive:true,gear:'N',gas:false,brake:false,throttle:0,wheelDeg:0,wheelHe
   cam:'driver',look:0,snd:true,started:false,
   x:0,z:0,y:0,vy:0,yaw:0,v:0,vh:0,roll:0,pitch:0,rollRate:0,pitchRate:0,yawRate:0,air:false,
   lR:0,lRv:0,sR:0,lP:0,lPv:0,sP:0,phiG:0,thG:0,yG:0,gwr:0,gwp:0,latF:0,aLong:0,
-  dist:0,flags:0,next:0,flips:0,fuel:1,outT:0,alt:0,maxAlt:0,altT:0,rec:[],recT:0,endWhy:'',runT0:null,runT:0,flagT:0,splits:[],ended:false,sentKey:'',spin:0,susp:[0,0,0,0],slide:false,spinOut:false,airT:0,
+  perks:{turbo:false,sticky:false},dist:0,flags:0,next:0,flips:0,fuel:1,outT:0,alt:0,maxAlt:0,altT:0,rec:[],recT:0,endWhy:'',runT0:null,runT:0,flagT:0,splits:[],ended:false,sentKey:'',spin:0,susp:[0,0,0,0],slide:false,spinOut:false,airT:0,
   msgUntil:0,shake:0,crashT:0,crashWhy:'',warnT:0,wreck:null,camP:null,orbit:0,best:{dist:0,flags:0}};
 // best run on this phone for each mode: flags then time, or highest point for the climb modes. splits are kept to compare against
 const BESTS={};for(const m in MODES)BESTS[m]={flags:0,t:0,dist:0,alt:0,splits:[]};
@@ -328,7 +368,7 @@ function sampleGround(){
 function fit(h){return{phi:Math.atan2((h[1]+h[3])-(h[0]+h[2]),4*T),th:Math.atan2((h[0]+h[1])-(h[2]+h[3]),4*A),y:(h[0]+h[1]+h[2]+h[3])/4,tw:(h[0]-h[1]-h[2]+h[3])/4};}
 
 function resetRig(full){
-  if(full){G.x=0;G.z=0;G.yaw=0;G.dist=0;G.flags=0;G.next=0;G.flips=0;G.runT0=null;G.runT=0;G.flagT=0;G.splits=[];G.ended=false;G.sentKey='';G.fuel=1;G.outT=0;G.alt=0;G.maxAlt=0;G.altT=0;G.rec=[];G.recT=0;G.endWhy='';G.surf=0;G.depth=0;}
+  if(full){G.x=0;G.z=0;G.yaw=0;G.dist=0;G.flags=0;G.next=0;G.flips=0;G.runT0=null;G.runT=0;G.flagT=0;G.splits=[];G.ended=false;G.sentKey='';G.fuel=1;G.outT=0;G.alt=0;G.maxAlt=0;G.altT=0;G.rec=[];G.recT=0;G.endWhy='';G.surf=0;G.depth=0;G.perks={turbo:false,sticky:false};if(G.started&&(INV.turbo||INV.sticky)){G.perks={turbo:INV.turbo,sticky:INV.sticky};INV.turbo=false;INV.sticky=false;saveInv();}}
   const h=sampleGround(),f=fit(h);
   G.y=f.y;G.yG=f.y;G.phiG=f.phi;G.thG=f.th;G.roll=f.phi;G.pitch=f.th;G.vy=0;G.v=0;G.vh=0;
   G.rollRate=G.pitchRate=G.yawRate=0;G.air=false;G.lR=G.lRv=G.sR=G.lP=G.lPv=G.sP=0;G.gwr=G.gwp=0;
@@ -389,14 +429,14 @@ function groundStep(dt,gas,brk){
   const sf=surfAt(G.x,G.z),sk=sf.k;
   if(sk!==G.surf){G.surf=sk;if(sk)msg(sk===3?'Water crossing '+sf.d.toFixed(1)+' m deep':SURF[sk],1.8);if(sk===3&&Math.abs(G.v)>3)splash(Math.abs(G.v));}
   G.depth=sf.d;
-  const grip=[1,MUDT?.92:.8,MUDT?.85:.55,MUDT?.85:.68][sk];
+  const grip=[1,MUDT?.92:.8,MUDT?.85:.55,MUDT?.85:.68][sk]*(G.perks.sticky?1.15:1);
   const drag=[0,MUDT?.5:1.1,MUDT?.9:2.4,.6+sf.d*2.6][sk]+(sk===3?.025*G.v*G.v*sf.d:0);
   if(sk===3&&sf.d>INTAKE)return crash('Engine flooded','none');
   const fmax=MU*GR*Math.cos(G.thG)*(G.lR>.05||G.lP>.05?.42:1)*grip;
   let a=-GR*Math.sin(G.thG);G.spinOut=false;
   if(dir&&wheelsDown){
     const vmax=(dir>0?24:7)*(1-.3*dmgK()),sp=dir*G.v,dry=MODES[MODE].fuel&&G.fuel<=0;
-    let want=dry?0:G.throttle*7.8*POWER*(1-.5*dmgK())*clamp(1-sp/vmax,0,1);if(!dry&&!brk&&sp<1.2&&G.throttle<.1)want=Math.max(want,1.1);
+    let want=dry?0:G.throttle*7.8*POWER*(G.perks.turbo?1.2:1)*(1-.5*dmgK())*clamp(1-sp/vmax,0,1);if(!dry&&!brk&&sp<1.2&&G.throttle<.1)want=Math.max(want,1.1);
     if(want>fmax){G.spinOut=G.throttle>.5;want=fmax;}
     a+=dir*want;
   }
@@ -496,7 +536,8 @@ function showCard(){
   $('cardT').textContent=G.ended?(G.endWhy||'Run over'):G.crashWhy;
   $('cardS').textContent=runText();
   $('cardD').innerHTML='';
-  const lines=[MODES[MODE].n+'  ·  Distance '+fmtD(G.dist)+(G.flips?'  ·  Flips '+G.flips:''),'Best here: '+bestText()];
+  const pk=[G.perks.turbo?'Turbo':'',G.perks.sticky?'Sticky tires':''].filter(Boolean).join(' and ');
+  const lines=[MODES[MODE].n+'  ·  Distance '+fmtD(G.dist)+(G.flips?'  ·  Flips '+G.flips:''),'Best here: '+bestText()].concat(pk?['Perks this run: '+pk]:[]);
   lines.forEach((t,i)=>{if(i)$('cardD').appendChild(document.createElement('br'));$('cardD').appendChild(document.createTextNode(t));});
   $('cFlip').style.display=G.ended?'none':'';
   const key=runKey(),ok=canPost();$('bSubmit').disabled=!ok||G.sentKey===key||!window.Scores;
@@ -520,10 +561,27 @@ function submitScore(){
     else{$('bSubmit').disabled=false;$('subMsg').textContent={slow_down:'Wait ten seconds and try again',tag_rejected:'Pick a different tag',offline:'Score hub unreachable'}[r&&r.error]||'Not posted ('+((r&&r.error)||'error')+')';}
   });
 }
-function openGarage(){G.garageDirty=false;renderGarage();$('garage').classList.add('on');}
+function openGarage(){G.garageDirty=false;renderGarage();$('garage').classList.add('on');tokRefresh(renderGarage);}
 function renderGarage(){
-  $('bank').textContent='$'+SHOP.bank;
+  $('bank').textContent='$'+SHOP.bank+' cash';
+  $('tokLine').textContent=tokText();
   const box=$('parts');box.replaceChildren();
+  const sec=t=>{const d=document.createElement('div');d.className='sec';d.textContent=t;box.appendChild(d);};
+  sec('PERKS, PAID IN TOKENS');
+  PERKS.forEach(pk=>{
+    const price=TOK.items[pk.k],d=document.createElement('div');d.className='part';
+    const n=document.createElement('div');n.className='pn';
+    n.textContent=pk.n+(pk.k==='fuelcan'&&INV.fuelcan?'  ·  have '+INV.fuelcan:'')+((pk.k==='turbo'&&INV.turbo)||(pk.k==='sticky'&&INV.sticky)?'  ·  ready for next run':'');
+    const nd=document.createElement('div');nd.className='pd';nd.textContent=pk.d;
+    const b=document.createElement('button');b.className='opt'+(price==null||TOK.bal===null||TOK.bal<price?' lock':'');b.style.width='100%';
+    const armed=(pk.k==='turbo'&&INV.turbo)||(pk.k==='sticky'&&INV.sticky),noDmg=pk.k==='repair'&&SHOP.dmg<.005;
+    b.textContent=armed?'Ready':noDmg?'Nothing to fix':price==null?'Tokens offline':'Buy  '+price+' tokens';
+    b.addEventListener('click',()=>{if(armed||noDmg||price==null)return;tokSpend(pk.k,()=>{
+      if(pk.k==='fuelcan')INV.fuelcan++;else if(pk.k==='repair')SHOP.dmg=Math.max(0,SHOP.dmg-.5);else INV[pk.k]=true;
+      saveInv();saveShop();});});
+    const row=document.createElement('div');row.className='opts';row.appendChild(b);d.append(n,nd,row);box.appendChild(d);
+  });
+  sec('PARTS, PAID IN CASH OR TOKENS');
   PARTS.forEach(p=>{
     const d=document.createElement('div');d.className='part';
     const n=document.createElement('div');n.className='pn';n.textContent=p.name;
@@ -531,12 +589,16 @@ function renderGarage(){
     const row=document.createElement('div');row.className='opts';
     p.opts.forEach((o,i)=>{
       const owned=SHOP.own[p.k].includes(i),eq=SHOP.eq[p.k]===i,b=document.createElement('button');
-      b.className='opt'+(eq?' eq':'')+(!owned&&SHOP.bank<o.c?' lock':'');
-      b.textContent=(eq?'✓ ':'')+o.n+(owned?'':'  $'+o.c);
+      const tk=TOK.items['part-'+p.k+'-'+i];
+      b.className='opt'+(eq?' eq':'')+(!owned&&SHOP.bank<o.c&&!(TOK.bal!==null&&tk!=null&&TOK.bal>=tk)?' lock':'');
+      b.textContent=(eq?'✓ ':'')+o.n+(owned?'':'  $'+o.c+(tk!=null?' or '+tk+' tk':''));
+      const equip=()=>{if(SHOP.eq[p.k]!==i){SHOP.eq[p.k]=i;G.garageDirty=true;}saveShop();applyRig();renderGarage();};
       b.addEventListener('click',()=>{
-        if(!owned){if(SHOP.bank<o.c){$('gStats').textContent='Need $'+(o.c-SHOP.bank)+' more';return;}SHOP.bank-=o.c;SHOP.own[p.k].push(i);}
-        if(SHOP.eq[p.k]!==i){SHOP.eq[p.k]=i;G.garageDirty=true;}
-        saveShop();applyRig();renderGarage();
+        if(owned)return equip();
+        // cash first. if the cash is short, tokens pay through the server
+        if(SHOP.bank>=o.c){SHOP.bank-=o.c;SHOP.own[p.k].push(i);return equip();}
+        if(tk!=null&&TOK.bal!==null&&TOK.bal>=tk)return tokSpend('part-'+p.k+'-'+i,()=>{SHOP.own[p.k].push(i);equip();});
+        $('gStats').textContent='Need $'+(o.c-SHOP.bank)+' more cash'+(tk!=null&&TOK.bal!==null?' or '+(tk-TOK.bal)+' more tokens':'');
       });
       row.appendChild(b);
     });
@@ -956,7 +1018,8 @@ function hud(dt){
   $('cBest').textContent=CLIMBT?(G.best.alt?fmtAlt(G.best.alt):'none'):(G.best.flags?G.best.flags+' · '+fmtT(G.best.t):'none');
   $('chFuel').style.display=MODES[MODE].fuel?'':'none';
   $('fuelFill').style.width=Math.round(G.fuel*100)+'%';$('fuelFill').style.background=G.fuel<.2?'#c8362b':G.fuel<.4?'#c27a12':'#3f8a3f';
-  $('chDmg').style.display=OPT.damage?'':'none';$('cDmg').textContent=Math.round(SHOP.dmg*100)+'%';
+  $('chDmg').style.display=OPT.damage?'':'none';
+  const cb=$('bCan');cb.style.display=MODES[MODE].fuel&&INV.fuelcan>0?'':'none';cb.textContent='Can '+INV.fuelcan;$('cDmg').textContent=Math.round(SHOP.dmg*100)+'%';
   $('ticker').style.top=($('top').offsetHeight+6)+'px';
   const f=flagPos(G.next),dx=f.x-G.x,dz=f.z-G.z;$('cNext').textContent=Math.round(Math.hypot(dx,dz))+' m';
   $('arrow').style.transform='rotate('+normA(Math.atan2(dx,dz)-G.yaw)/DEG+'deg)';
@@ -1023,7 +1086,9 @@ function setupInput(){
   $('bNew').addEventListener('click',openMenu);
   $('bEnd').addEventListener('click',()=>{if(G.ended)return;endRun();});
   $('bBoard').addEventListener('click',openBoard);
-  $('bGarage').addEventListener('click',openGarage);$('garageClose').addEventListener('click',closeGarage);$('cBoard').addEventListener('click',openBoard);
+  $('bGarage').addEventListener('click',openGarage);
+  $('bCan').addEventListener('click',()=>{if(!MODES[MODE].fuel||!INV.fuelcan||!G.alive||G.ended)return;if(G.fuel>.95){msg('Tank is full',1.5);return;}
+    INV.fuelcan--;saveInv();G.fuel=Math.min(1,G.fuel+.5);G.outT=0;msg('Fuel can used. '+INV.fuelcan+' left',2);});$('garageClose').addEventListener('click',closeGarage);$('cBoard').addEventListener('click',openBoard);
   $('boardClose').addEventListener('click',()=>$('board').classList.remove('on'));
   $('bSubmit').addEventListener('click',submitScore);
   try{$('tagIn').value=localStorage.getItem('mobbyhill-tag')||'';}catch(e){}
@@ -1074,14 +1139,15 @@ function renderMenu(){
   $('tGhost').textContent='Ghost '+(OPT.ghost?'on':'off');$('tGhost').classList.toggle('on',OPT.ghost);
   $('tDmg').textContent='Damage '+(OPT.damage?'on':'off');$('tDmg').classList.toggle('on',OPT.damage);
   $('sBest').textContent='Best '+MODES[MODE].n+': '+bestText()+(OPT.damage&&SHOP.dmg>.005?'  ·  Damage '+Math.round(SHOP.dmg*100)+'%':'');
+  $('sTok').textContent=tokText();
   $('sTilt').textContent=G.tiltOn?'Start':'Start with tilt';$('sPlain').style.display=G.tiltOn?'none':'';
 }
-function openMenu(){G.started=false;renderMenu();$('start').classList.remove('hide');}
+function openMenu(){G.started=false;renderMenu();$('start').classList.remove('hide');tokRefresh(renderMenu);}
 $('tGhost').addEventListener('click',()=>{OPT.ghost=!OPT.ghost;saveOpts();renderMenu();});
 $('tDmg').addEventListener('click',()=>{OPT.damage=!OPT.damage;saveOpts();renderMenu();});
 function begin(tilt){$('start').classList.add('hide');G.started=true;ac();startEngine();if(tilt&&!G.tiltOn)enableTilt();resetRig(true);msg('Shift to D and hold Gas',3);}
 $('sTilt').addEventListener('click',()=>begin(true));$('sPlain').addEventListener('click',()=>begin(false));
-renderMenu();
+renderMenu();tokRefresh(renderMenu);
 setupInput();resetRig(true);requestAnimationFrame(frame);
 </script>
 </body>
