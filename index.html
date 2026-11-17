@@ -8,7 +8,7 @@
 <meta name="theme-color" content="#e9e6dc">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%23eceae3'/%3E%3Cpath d='M2 24 L10 12 L16 18 L22 8 L30 24 Z' fill='none' stroke='%23d2601a' stroke-width='2.4'/%3E%3C/svg%3E">
 <!--
-MobbyHill v9. v1 written in chat with Claude Opus 5.5, Nov 14 2026.
+MobbyHill v10. v1 written in chat with Claude Opus 5.5, Nov 14 2026.
 Wireframe 4x4 on wireframe terrain. Driver seat camera with hood, dash and steering wheel, chase camera, top camera.
 Controls carried over from the dock yard truck game: drag steering wheel, D N R gears, Brake and Gas pedals.
 Phone tilt shifts the driver's weight left or right. The center of gravity moves with the driver,
@@ -22,6 +22,7 @@ v6 adds scenery (cactus, dead trees, brush, sun, clouds, buzzards over the next 
 v7 makes the buzzards fly from each flag to the next one instead of jumping there.
 v8 adds four landscapes (Mob the mountain, forest, canyon, dunes), each with its own ground, ground cover, scenery and leaderboards. Games are Mob the trail and Mob the hill, with Fuel challenge as a switch. The Store moves to the main menu, gets icons, and adds paddle tires, locking diffs, rock sliders, a brush guard, tire chains and long travel shocks.
 v9 adds three vehicles (side by side, Jeep, pickup) and Search and rescue: tow a trailer with two teammates following your track, find six hikers by their smoke, load three at a time and bring them back to base. The menu goes vehicle, map, challenge.
+v10 adds a fourth rig, a boxy 90s SUV in purple nicknamed the eggplant, and Off road recovery: yank stuck wrecks with a kinetic rope, winch flipped ones upright, and haul burned ones on a flatbed that only the pickup can pull. The pickup gets a wrecker boom and wheel lift. The Store adds a heavy rope and a fast winch.
 -->
 <style>
 :root{
@@ -133,6 +134,7 @@ input{user-select:text;-webkit-user-select:text}
 .modes button{border:2px solid var(--edge);background:#fff;border-radius:9px;padding:10px 4px;font-size:15px;font-weight:900}
 .modes button.on{background:#fbe6d6;border-color:var(--orange);color:#7a3510}
 .sc .mnote{text-align:center;font-size:13px;min-height:36px;margin-top:6px}
+.sc .vnote{font-size:12px;color:var(--ink2);text-align:center;margin-top:5px}
 .sc .lbl{font-size:11px;font-weight:900;color:var(--ink2);letter-spacing:.06em;text-transform:uppercase;margin-top:10px;text-align:left}
 .sc .lbl+.modes{margin-top:4px}
 .sc button.store{background:#dcefdc;border-color:var(--green);color:#24552a}
@@ -213,11 +215,12 @@ input{user-select:text;-webkit-user-select:text}
     <h1>MobbyHill</h1>
     <p>Pick a rig, a map and a challenge. Steer with the wheel, pick D, hold Gas, tilt to lean.</p>
     <div class="lbl">1. Vehicle</div>
-    <div class="modes m3" id="vehs"></div>
+    <div class="modes" id="vehs"></div>
+    <p class="vnote" id="vehNote"></p>
     <div class="lbl">2. Map</div>
     <div class="modes" id="lands"></div>
     <div class="lbl">3. Challenge</div>
-    <div class="modes m3" id="modes"></div>
+    <div class="modes" id="modes"></div>
     <p class="mnote" id="modeNote"></p>
     <div class="row"><button class="tog" id="tFuel">Fuel challenge</button><button class="tog" id="tGhost">Ghost</button><button class="tog" id="tDmg">Damage</button></div>
     <div class="row"><button class="store" id="sStore">Store</button></div>
@@ -240,11 +243,14 @@ const now=()=>performance.now()/1000;
 let T=0.78,A=1.2;const CGZ=0.08,MU=0.85,LEANMAX=0.17,FBMAX=0.2;
 // three rigs. T half track, A half wheelbase, wr wheel radius, cgh center of gravity height. eye and sw place the driver seat camera and steering wheel.
 // cutY and cutZ hide the low and rear lines from the driver seat. hitch is how far back the trailer ball sits
+// body color for each rig. the SUV is purple
 const VEHS={
   sxs:{n:'Mob in a side by side',s:'Side by side',T:.72,A:1.12,wr:.38,cgh:.64,power:1.15,vmax:27,eye:[-.33,1.4,-.42],sw:[-.33,1.06,-.02],col:[-.33,.86,.3],cutY:.76,cutZ:-.05,hitch:1.8,
     note:'Light, low and quick. Hard to roll, but short tires and little clearance.'},
   jeep:{n:'Mob in a Jeep',s:'Jeep',T:.78,A:1.2,wr:.42,cgh:.78,power:1,vmax:24,eye:[-.4,1.62,-.28],sw:[-.4,1.2,.05],col:[-.4,.98,.34],cutY:.97,cutZ:.1,hitch:2.15,
     note:'The all rounder. Short wheelbase, tight turns, good clearance.'},
+  suv:{n:'Mob in an SUV',s:'SUV',T:.78,A:1.33,wr:.41,cgh:.86,power:1.05,vmax:25,eye:[-.4,1.66,-.32],sw:[-.4,1.25,.06],col:[-.4,1.02,.38],cutY:1.02,cutZ:.02,hitch:2.4,color:'#7a3e9d',
+    note:'A boxy 90s family SUV. Roomy and steady, softer on the rocks. Its nickname is the eggplant.'},
   pickup:{n:'Mob in a pickup',s:'Pickup',T:.82,A:1.62,wr:.45,cgh:.92,power:1.12,vmax:26,eye:[-.4,1.78,-.18],sw:[-.4,1.42,.22],col:[-.4,1.2,.5],cutY:1.12,cutZ:-.3,hitch:2.95,
     note:'Long and strong. Hard to flip end over end, wide turns, tips on side slopes.'}};
 let VK='jeep',VEH=VEHS.jeep;
@@ -256,6 +262,8 @@ const MODES={
   climb:{n:'Mob the hill',slug:'mobbyhill-climb',fuel:false,climb:true,note:'One long hill that keeps getting steeper. The highest point you reach is your score.'},
   rescue:{n:'Search and rescue',slug:'mobbyhill-rescue',fuel:false,climb:false,rescue:true,note:'Lead your team of three and tow the rescue trailer. Find the six stranded hikers by their smoke, load up to three at a time, and bring them back to base.'},
   rescuefuel:{n:'Search and rescue + fuel',slug:'mobbyhill-rescuefuel',fuel:true,climb:false,rescue:true,note:'The rescue on one tank. Base refills it each time you drop hikers off.'},
+  recovery:{n:'Off road recovery',slug:'mobbyhill-recovery',fuel:false,climb:false,recovery:true,note:'Yank stuck wrecks with the rope, winch flipped ones upright, haul burned ones on the flatbed. Tow all five to the yard.'},
+  recoveryfuel:{n:'Off road recovery + fuel',slug:'mobbyhill-recoveryfuel',fuel:true,climb:false,recovery:true,note:'The recovery jobs on one tank. The yard refills it each time you drop a wreck.'},
   climbfuel:{n:'Mob the hill + fuel',slug:'mobbyhill-climbfuel',fuel:true,climb:true,note:'The long hill on one tank. Flags refill it. Climb as high as the fuel lets you.'}};
 // four landscapes. each one shapes the ground, the ground cover, the scenery and the colors
 const LANDS={
@@ -272,6 +280,7 @@ function comboKey(){return LAND==='mountain'?MODE:MODE+'-'+LAND;}
 function slugNow(){return MODES[MODE].slug+(LAND==='mountain'?'':'-'+LAND);}
 function playName(){return MODES[MODE].n+'  ·  '+LANDS[LAND].s;}
 function isRescue(){return!!MODES[MODE].rescue;}
+function isRecovery(){return!!MODES[MODE].recovery;}
 // these change with the parts bolted on in the garage
 let CGH=0.78,WR=0.42,MUP=0,CLIMB=.5,POWER=1,INTAKE=.75,MUDT=false,PADDLE=false,LOCK=false,SLIDE=false,GUARD=false,SHOCK=false,CHAINS=false;
 const PARTS=[
@@ -283,9 +292,11 @@ const PARTS=[
   {k:'snorkel',name:'Air intake',best:'Forest and Mountain',note:'A snorkel lets you cross deep water',opts:[{n:'Stock',c:0},{n:'Snorkel',c:300}]},
   {k:'chains',name:'Tire chains',best:'Mountain',note:'Bite into snow on the high ground',opts:[{n:'None',c:0},{n:'Chains',c:250}]},
   {k:'shocks',name:'Long travel shocks',best:'Dunes',note:'Softer landings off dune crests. Survive harder drops and take half the landing damage.',opts:[{n:'Stock',c:0},{n:'Long travel',c:550}]},
+  {k:'rope',name:'Kinetic rope',best:'Off road recovery',note:'A heavier yank rope. Hit stuck wrecks harder before it snaps.',opts:[{n:'Stock',c:0},{n:'Heavy',c:300}]},
+  {k:'winch',name:'Winch',best:'Off road recovery',note:'A faster winch rights flipped wrecks and loads the flatbed in almost half the time.',opts:[{n:'Stock',c:0},{n:'Fast',c:350}]},
   {k:'engine',name:'Engine',best:'Every landscape',note:'More power for steep climbs and soft ground',opts:[{n:'Stock',c:0},{n:'Big V8',c:600}]},
   {k:'tank',name:'Fuel tank',best:'Fuel challenge',note:'A long range tank goes half again as far on one fill',opts:[{n:'Stock',c:0},{n:'Long range',c:350}]}];
-let SHOP={bank:0,own:{lift:[0],tires:[0],engine:[0],snorkel:[0],tank:[0],lockers:[0],sliders:[0],guard:[0],shocks:[0],chains:[0]},eq:{lift:0,tires:0,engine:0,snorkel:0,tank:0,lockers:0,sliders:0,guard:0,shocks:0,chains:0},dmg:0,pull:1};
+let SHOP={bank:0,own:{lift:[0],tires:[0],engine:[0],snorkel:[0],tank:[0],lockers:[0],sliders:[0],guard:[0],shocks:[0],chains:[0],rope:[0],winch:[0]},eq:{lift:0,tires:0,engine:0,snorkel:0,tank:0,lockers:0,sliders:0,guard:0,shocks:0,chains:0,rope:0,winch:0},dmg:0,pull:1};
 try{const sh=JSON.parse(localStorage.getItem('mobbyhill-shop')||'null');if(sh&&sh.own&&sh.eq){SHOP.bank=sh.bank||0;Object.assign(SHOP.own,sh.own);Object.assign(SHOP.eq,sh.eq);SHOP.dmg=sh.dmg||0;SHOP.pull=sh.pull||1;}}catch(e){}
 function saveShop(){try{localStorage.setItem('mobbyhill-shop',JSON.stringify(SHOP));}catch(e){}}
 // two currencies. cash is earned at flags and kept on the phone. tokens come from the score hub server,
@@ -390,6 +401,7 @@ let SC=26;const DECOR=new Map();
 const DMIX={mountain:[[.22,3],[.32,1],[.5,2]],forest:[[.42,3],[.62,4],[.75,2]],canyon:[[.1,5],[.32,2],[.38,1]],dunes:[[.07,0],[.18,2]]};
 function nearLine(x,z){
   if(isRescue()){if(Math.hypot(x,z)<16)return true;for(const h of HIK)if(Math.hypot(h.x-x,h.z-z)<10)return true;return false;}
+  if(isRecovery()){if(Math.hypot(x,z)<16)return true;for(const j of JOBS)if(Math.hypot(j.x-x,j.z-z)<12)return true;return false;}
   if(CLIMBT){if(Math.abs(x-12*Math.sin(z/130))<5.5)return true;const i=Math.round(z/80)-1;if(i<0)return false;const f=flagPos(i);return Math.hypot(f.x-x,f.z-z)<9;}
   // keep a lane open on the straight line between flags so the trail flows, and trees crowd its edges
   const i=Math.floor(z/105);const A0=i<=0?{x:0,z:0}:flagPos(i-1),B0=flagPos(Math.max(0,i));
@@ -432,7 +444,7 @@ const G={alive:true,gear:'N',gas:false,brake:false,throttle:0,wheelDeg:0,wheelHe
   cam:'driver',look:0,snd:true,started:false,
   x:0,z:0,y:0,vy:0,yaw:0,v:0,vh:0,roll:0,pitch:0,rollRate:0,pitchRate:0,yawRate:0,air:false,
   lR:0,lRv:0,sR:0,lP:0,lPv:0,sP:0,phiG:0,thG:0,yG:0,gwr:0,gwp:0,latF:0,aLong:0,
-  perks:{turbo:false,sticky:false},load:0,loadT:0,s:0,coins:0,stuntCash:0,got:new Set(),twoT:0,whT:0,whS:0,airPitch:0,airRoll:0,stuntUntil:0,dist:0,flags:0,next:0,flips:0,fuel:1,outT:0,alt:0,maxAlt:0,altT:0,rec:[],recT:0,endWhy:'',runT0:null,runT:0,flagT:0,splits:[],ended:false,sentKey:'',spin:0,susp:[0,0,0,0],slide:false,spinOut:false,airT:0,
+  perks:{turbo:false,sticky:false},tow:null,load:0,loadT:0,s:0,coins:0,stuntCash:0,got:new Set(),twoT:0,whT:0,whS:0,airPitch:0,airRoll:0,stuntUntil:0,dist:0,flags:0,next:0,flips:0,fuel:1,outT:0,alt:0,maxAlt:0,altT:0,rec:[],recT:0,endWhy:'',runT0:null,runT:0,flagT:0,splits:[],ended:false,sentKey:'',spin:0,susp:[0,0,0,0],slide:false,spinOut:false,airT:0,
   msgUntil:0,shake:0,crashT:0,crashWhy:'',warnT:0,wreck:null,camP:null,orbit:0,best:{dist:0,flags:0}};
 // best run on this phone for each mode: flags then time, or highest point for the climb modes. splits are kept to compare against
 const BESTS={};
@@ -462,7 +474,7 @@ function bestText(b){b=b||G.best;return CLIMBT?(b.alt?fmtAlt(b.alt):'none yet'):
 function dmgK(){return OPT.damage?SHOP.dmg:0;}
 function hurt(a){if(!OPT.damage||!G.alive||a<=0)return;SHOP.dmg=Math.min(1,SHOP.dmg+a);saveShop();if(a>.03)msg('Damage '+Math.round(SHOP.dmg*100)+'%',1.6,true);}
 function fmtT(t){t=Math.max(0,t);const m=Math.floor(t/60),s=t-m*60;return m+':'+(s<10?'0':'')+s.toFixed(1);}
-function fmtRun(f,t){return f+(isRescue()?' rescued in ':f===1?' flag in ':' flags in ')+fmtT(t);}
+function fmtRun(f,t){return f+(isRescue()?' rescued in ':isRecovery()?(f===1?' job in ':' jobs in '):f===1?' flag in ':' flags in ')+fmtT(t);}
 // one number for the score hub: more flags always wins, then less time. flags*100000 + (99999 - tenths of a second)
 function packScore(f,t){return f*100000+(99999-Math.min(99999,Math.round(t*10)));}
 function unpackScore(n){const f=Math.floor(n/100000),t=(99999-n%100000)/10;return{f,t};}
@@ -481,7 +493,8 @@ function resetRig(full){
   G.rollRate=G.pitchRate=G.yawRate=0;G.air=false;G.lR=G.lRv=G.sR=G.lP=G.lPv=G.sP=0;G.gwr=G.gwp=0;
   G.twoT=0;G.whT=0;
   G.alive=true;G.wreck=null;G.gear='N';G.throttle=0;G.wheelDeg=0;G.look=0;G.camP=null;G.latF=0;G.aLong=0;
-  if(isRescue()){if(full){makeHikers();crumbReset();}trailerReset();}
+  if(isRescue()){if(full){makeHikers();crumbReset();}LT=3.1;trailerReset();}
+  if(isRecovery()){if(full){makeJobs();G.tow=null;}else if(G.tow){if(G.tow.job&&G.tow.kind!=='flat'){G.tow.job.st='free';G.tow.job.x=TRL.x;G.tow.job.z=TRL.z;G.tow=null;}else trailerReset();}}
   $('card').classList.remove('on');
 }
 
@@ -522,13 +535,14 @@ function treeBlock(){
   return null;
 }
 // search and rescue. six hikers per landscape at fixed spots, a trailer on the hitch, two teammates following your track
-const HIK=[],TRL={x:0,z:0,y:0,yaw:0,pitch:0,roll:0},LT=3.1,CRUMB=[];
+const HIK=[],TRL={x:0,z:0,y:0,yaw:0,pitch:0,roll:0},CRUMB=[];let LT=3.1;
 const TEAMC=['rgba(42,98,176,.95)','rgba(63,138,63,.95)'],GAPS=[10.5,18];
 function makeHikers(){HIK.length=0;if(!isRescue())return;const li=Object.keys(LANDS).indexOf(LAND);
   for(let i=0;i<6;i++){let best=null;for(let k=0;k<24&&!best;k++){const a=hh(i,k,91+li)*6.283,d=95+i*48+hh(i,k,97)*20,x=Math.sin(a)*d,z=Math.cos(a)*d;
     const sk=surfAt(x,z).k;if(sk!==2&&sk!==3)best={x,z,st:0,ph:hh(i,k,99)*6};}
     if(best)HIK.push(best);}}
 function targetPos(){
+  if(isRecovery())return jobTarget();
   if(!isRescue())return flagPos(G.next);
   const base={x:0,z:0,y:heightAt(0,0),base:true};
   if(G.load>=3)return base;
@@ -548,7 +562,7 @@ function trailerStep(){
   trailerGround();
   // the trailer only goes over when it stays past the tip point, so a single ledge edge does not throw it
   TRL.rf=(TRL.rf||0)+(TRL.roll-(TRL.rf||0))*.05;
-  if(Math.abs(TRL.rf)>.8&&G.alive)crash('Trailer rolled','roll');
+  if(Math.abs(TRL.rf)>.8&&G.alive&&(isRescue()||(G.tow&&G.tow.kind==='flat')))crash('Trailer rolled','roll');
 }
 function crumbReset(){CRUMB.length=0;G.s=0;const s=Math.sin(G.yaw),c=Math.cos(G.yaw);
   for(let k=-80;k<=0;k++){const d=k*.5,x=G.x+s*d,z=G.z+c*d;CRUMB.push({s:d,x,y:heightAt(x,z),z,yaw:G.yaw,p:0,r:0});}}
@@ -572,6 +586,105 @@ function rescueStep(dt){
     else{G.loadT+=dt;if(G.loadT>1.5){near.st=1;G.load++;G.loadT=0;chime();msg('Hiker aboard. '+G.load+' of 3 seats',2);}}}
   else G.loadT=0;
   if(near&&sp>=1.5&&G.load<3&&now()>G.blockMsgT){G.blockMsgT=now()+3;msg('Stop next to the hiker to load them',1.6);}
+}
+// off road recovery. five wrecks per landscape at fixed spots. stuck ones get yanked with the rope, flipped ones get winched upright,
+// burned ones go on the flatbed, which only the pickup can pull. the pickup also tows on its wheel lift instead of a long rope
+const JOBS=[],JTYPES=['stuck','flipped','stuck','burned','flipped'],WRECKM=[[],[]];
+function makeWrecks(){const sv=[MUP,WR,A,T,VK,MODEL.slice()];MUP=0;
+  WR=.42;A=1.2;T=.78;MODEL.length=0;buildJeep();WRECKM[0]=MODEL.slice();
+  WR=.45;A=1.62;T=.82;MODEL.length=0;VK='x';buildPickup();WRECKM[1]=MODEL.slice();
+  [MUP,WR,A,T,VK]=sv;MODEL.length=0;MODEL.push(...sv[5]);}
+function makeJobs(){JOBS.length=0;if(!isRecovery())return;const li=Object.keys(LANDS).indexOf(LAND);
+  for(let i=0;i<5;i++){let best=null;for(let k=0;k<24&&!best;k++){const a=hh(i,k,131+li)*6.283,d=100+i*55+hh(i,k,137)*25,x=Math.sin(a)*d,z=Math.cos(a)*d;
+    const sk=surfAt(x,z).k;if(sk!==3)best={i,x,z,yaw:hh(i,k,139)*6.283,type:JTYPES[i],st:'open',prog:0,hooked:false,pd:0,m:i%2,roll:JTYPES[i]==='flipped'?Math.PI:0};}
+    if(best)JOBS.push(best);}}
+function towPull(){if(!isRecovery()||!G.tow)return 1;const k=G.tow.kind;return k==='lift'?.9:k==='rope'?.78:G.tow.job?.8:.93;}
+function jobTarget(){
+  const base={x:0,z:0,y:heightAt(0,0),base:true};
+  if(G.tow&&G.tow.job)return base;
+  let n=null,nd=1e9;for(const j of JOBS)if(j.st==='open'||j.st==='free'){const d=Math.hypot(j.x-G.x,j.z-G.z);if(d<nd){nd=d;n=j;}}
+  if(!n)return base;
+  if(n.type==='burned'&&VK==='pickup'&&!(G.tow&&G.tow.kind==='flat'))return base;
+  return{x:n.x,z:n.z,y:heightAt(n.x,n.z)};}
+function rigFront(){const s=Math.sin(G.yaw),c=Math.cos(G.yaw),f=A+.9;return[G.x+s*f,G.z+c*f];}
+function attachTow(j){const kind=VK==='pickup'?'lift':'rope';G.tow={kind,job:j};j.st='towing';j.hooked=false;LT=(kind==='lift'?1.3:6)+2;
+  TRL.x=j.x;TRL.z=j.z;TRL.rf=0;trailerStep();msg(kind==='lift'?'On the wheel lift. Tow it to the yard':'On the tow rope. Drag it to the yard',2.5);}
+function jobsLeft(){return JOBS.some(j=>j.st==='open'||j.st==='free'||j.st==='towing');}
+function recoveryStep(dt){
+  if(!G.alive||G.ended)return;
+  if(G.tow){trailerStep();if(!G.alive)return;}
+  const sp=Math.abs(G.v),atBase=Math.hypot(G.x,G.z)<11,tj=G.tow&&G.tow.job,say=(t,sec,bad)=>{if(now()>G.blockMsgT){G.blockMsgT=now()+(sec||2.5);msg(t,sec||2.5,bad);}};
+  const winchT=(SHOP.eq.winch?2:3.5)*(VK==='sxs'?1.4:1);
+  if(atBase&&tj&&sp<1.5){G.loadT+=dt;if(G.loadT>1.5){
+      tj.st='done';G.flags++;G.flagT=G.runT;G.splits.push(G.runT);const earn=150+{stuck:0,flipped:100,burned:200}[tj.type];SHOP.bank+=earn;saveShop();
+      if(G.tow.kind==='flat')G.tow.job=null;else G.tow=null;G.loadT=0;if(MODES[MODE].fuel){G.fuel=1;G.outT=0;}chime();
+      msg('Wreck in the yard. '+G.flags+' of '+JOBS.length+' cleared  +$'+earn+(MODES[MODE].fuel?'  tank full':''),3);saveBest();
+      if(!jobsLeft())endRun(G.flags===JOBS.length?'All jobs cleared':'Every job you can do is done');}
+    return;}
+  if(atBase&&!G.tow&&VK==='pickup'&&sp<1.5&&JOBS.some(j=>j.type==='burned'&&j.st==='open')){G.loadT+=dt;if(G.loadT>1){G.loadT=0;G.tow={kind:'flat',job:null};LT=4.4;trailerReset();chime();msg('Flatbed hitched. Go get the burned one',2.5);}return;}
+  if(tj){G.loadT=0;return;}
+  let j=null,jd=1e9;for(const q of JOBS)if(q.st==='open'||q.st==='free'){const d=Math.hypot(q.x-G.x,q.z-G.z);if(d<jd){jd=d;j=q;}}
+  if(!j||jd>13){G.loadT=0;return;}
+  const flat=G.tow&&G.tow.kind==='flat';
+  if(j.type==='burned'&&!flat){
+    if(VK!=='pickup'){j.st='skip';msg('Burned out with no wheels. Too heavy for the '+VEH.s+'. Only the pickup can haul the flatbed. Job skipped',4,true);if(!jobsLeft())endRun(G.flags?'Every job you can do is done':'No jobs this rig can do');return;}
+    say('Burned out with no wheels. Go hitch the flatbed at the yard',3,true);return;}
+  if(flat||j.type==='flipped'&&j.st==='open'){
+    // winch: stay parked and the cable does the work
+    if(sp>.5){if(jd<13)say(flat?'Stop and winch it onto the flatbed':'Stop and winch it back onto its wheels',2);return;}
+    j.prog=Math.min(1,j.prog+dt/winchT);if(j.type==='flipped'&&!flat)j.roll=Math.PI*(1-j.prog);
+    if(now()>G.blockMsgT){G.blockMsgT=now()+.4;msg((flat?'Winching onto the flatbed ':'Winching it over ')+Math.round(j.prog*100)+'%',.5);}
+    if(j.prog>=1){j.prog=0;j.roll=0;chime();
+      if(flat){G.tow.job=j;j.st='towing';msg('Loaded on the flatbed. Take it to the yard',2.5);}
+      else{j.st='free';thump(.5);msg('Back on its wheels',2);attachTow(j);}}
+    return;}
+  if(j.st==='free'){if(sp<1.5&&jd<9)attachTow(j);return;}
+  // stuck: hook the kinetic rope, then hit it. the rope goes tight at its length and the speed you hit it with decides what happens
+  const h=hitchXZ(),d=Math.hypot(h[0]-j.x,h[1]-j.z),RL=8,snap=(SHOP.eq.rope?14:10.5)+(VK==='pickup'?2:0);
+  if(!j.hooked){if(jd<9&&sp<1.5){j.hooked=true;j.pd=d;msg('Yank rope hooked. Pull away and hit it',2.5);}else if(jd<11)say('Stop next to it to hook the rope',2);return;}
+  if(d>RL){const rate=(d-j.pd)/dt;
+    if(j.pd<=RL){
+      if(rate>snap){j.hooked=false;hurt(.05);G.v*=.5;thump(.8);G.shake=.4;msg('Rope snapped. Ease off and hook it again',2.5,true);j.pd=d;return;}
+      if(rate>2.2){G.v*=.35;thump(.7);G.shake=.35;j.st='free';j.yaw=Math.atan2(h[0]-j.x,h[1]-j.z);msg('Yanked free',2);attachTow(j);return;}
+      say('Not enough. Back up and hit it harder',2,true);}
+    const ux=(h[0]-j.x)/d,uz=(h[1]-j.z)/d;G.x-=ux*(d-RL);G.z-=uz*(d-RL);G.v=0;G.vh=0;
+    j.pd=RL;return;}
+  j.pd=d;
+}
+function wreckPose(j){const gy=heightAt(j.x,j.z),r=j.roll||0,sink=j.type==='stuck'&&j.st==='open'?.28:0;
+  return{O:[j.x,gy-sink+(j.m?2:2)*(1-Math.cos(r))/2,j.z],B:basis(j.yaw,0,r)};}
+function drawWreck(p,P,j,wheels){const lines=WRECKM[j.m],burned=j.type==='burned';
+  for(let i=0;i<lines.length;i++){if(burned&&hh(i,j.i,151)<.35)continue;const[a,b]=lines[i];segW(p,bw(P,a[0],a[1],a[2]),bw(P,b[0],b[1],b[2]));}
+  if(!wheels||burned)return;const wa=j.m?1.62:1.2,wt=j.m?.82:.78,wr=j.m?.45:.42;
+  for(const sx of[-1,1])for(const sz of[-1,1]){let pv=null;for(let k=0;k<=10;k++){const a=k/10*6.283,q=bw(P,sx*wt,wr+Math.sin(a)*wr,sz*wa+Math.cos(a)*wr);if(pv)segW(p,pv,q);pv=q;}}}
+function drawRecovery(pw,pbn,pb,pr,pm){
+  if(!isRecovery())return;const t=now(),blink=Math.floor(t*3)%2;
+  for(const j of JOBS){if(j.st==='towing'||j.st==='skip')continue;
+    if(j.st==='done'){const k=JOBS.indexOf(j),P={O:[-8+k*4.2,heightAt(-8+k*4.2,-11),-11],B:basis(0,0,0)};drawWreck(j.type==='burned'?pbn:pw,P,j,true);continue;}
+    if(Math.hypot(j.x-CAM.x,j.z-CAM.z)>600)continue;const P=wreckPose(j),gy=heightAt(j.x,j.z);
+    drawWreck(j.type==='burned'?pbn:pw,P,j,true);
+    if(blink){segW(pr,[j.x,gy+2.4,j.z],[j.x,gy+22,j.z]);segW(pr,[j.x-.6,gy+2.6,j.z],[j.x+.6,gy+2.6,j.z]);}
+    if(j.type==='stuck'&&j.st==='open'){let pv=null;for(let k=0;k<=12;k++){const a=k/12*6.283,q=[j.x+Math.cos(a)*3.2,gy+.05,j.z+Math.sin(a)*3.6];if(pv)segW(pm,pv,q);pv=q;}}
+    if(j.type==='burned'){let pv=[j.x,gy+1.6,j.z];for(let k=1;k<=10;k++){const q=[j.x+Math.sin(t*1.1+k*.8)*(.2+k*.15),gy+1.6+k*1.3,j.z+Math.cos(t+k*.7)*(.2+k*.1)];segW(pbn,pv,q);pv=q;}}
+    if(j.hooked){const h=hitchXZ(),hy=(G.air?G.y:G.yG)+.55;segW(pr,[h[0],hy,h[1]],[j.x,gy+.6,j.z]);}
+    if(j.prog>0&&!j.hooked){const f=rigFront(),fy=(G.air?G.y:G.yG)+.6;segW(pr,[f[0],fy,f[1]],[j.x,gy+.8,j.z]);}}
+  // the yard: a ring to park in and an orange flag
+  let prev=null;for(let k=0;k<=24;k++){const a=k/24*6.283,x=Math.cos(a)*11,z=Math.sin(a)*11,q=[x,heightAt(x,z)+.08,z];if(prev)segW(pb,prev,q);prev=q;}
+  const by=heightAt(6,-6);segW(pr,[6,by,-6],[6,by+7,-6]);segW(pr,[6,by+7,-6],[8.2,by+6.3,-5.8]);segW(pr,[8.2,by+6.3,-5.8],[6,by+5.6,-6]);
+  if(!G.tow)return;const tw=G.tow,PR=bodyPose(),hp=bw(PR,0,.55,-VEH.hitch);
+  if(tw.kind==='flat'){const P={O:[TRL.x,TRL.y,TRL.z],B:basis(TRL.yaw,TRL.pitch,TRL.roll)},f=(x,y,z)=>bw(P,x,y,z);
+    for(const y of[.75,.85]){segW(pr,f(-1.05,y,-2.6),f(1.05,y,-2.6));segW(pr,f(1.05,y,-2.6),f(1.05,y,2.4));segW(pr,f(1.05,y,2.4),f(-1.05,y,2.4));segW(pr,f(-1.05,y,2.4),f(-1.05,y,-2.6));}
+    for(let z=-2;z<=2;z+=1)segW(pr,f(-1.05,.75,z),f(1.05,.75,z));
+    segW(pr,f(-.8,.75,-2.6),f(-.8,.1,-3.4));segW(pr,f(.8,.75,-2.6),f(.8,.1,-3.4));
+    segW(pr,f(-.4,.75,2.4),f(0,.6,LT));segW(pr,f(.4,.75,2.4),f(0,.6,LT));segW(pr,f(0,.6,LT),hp);
+    for(const sx of[-1,1])for(const wz of[-.55,.45]){let pv=null;for(let k=0;k<=10;k++){const a=k/10*6.283+G.spin*.8,q=f(sx*1.12,.34+Math.sin(a)*.34,wz+Math.cos(a)*.34);if(pv)segW(pr,pv,q);pv=q;}}
+    if(tw.job){const j=tw.job,PB=basis(TRL.yaw,TRL.pitch,TRL.roll),Q={O:bw(P,0,.8,-.1),B:PB};drawWreck(j.type==='burned'?pbn:pw,Q,j,true);}
+    return;}
+  const j=tw.job,fw=[Math.sin(TRL.yaw),Math.cos(TRL.yaw)],wl=j.m?1.62:1.2,hf=heightAt(TRL.x+fw[0]*wl,TRL.z+fw[1]*wl),hb=heightAt(TRL.x-fw[0]*wl,TRL.z-fw[1]*wl);
+  const lift=tw.kind==='lift'?.35:0,P={O:[TRL.x,(hf+hb)/2+lift*.5,TRL.z],B:basis(TRL.yaw,Math.atan2(hf-hb+lift,wl*2),TRL.roll*.6)};
+  drawWreck(j.type==='burned'?pbn:pw,P,j,true);const fr=bw(P,0,.6,(j.m?2.3:1.95));
+  if(tw.kind==='rope'){const mid=[(hp[0]+fr[0])/2,(hp[1]+fr[1])/2-.4,(hp[2]+fr[2])/2];segW(pr,hp,mid);segW(pr,mid,fr);}
+  else{segW(pr,hp,fr);const fl=bw(P,-.6,.55,(j.m?2.3:1.95)),frr=bw(P,.6,.55,(j.m?2.3:1.95));segW(pr,fl,frr);}
 }
 function rockBlock(){
   const dv=Math.sign(G.v);if(!dv)return null;
@@ -610,7 +723,7 @@ function groundStep(dt,gas,brk){
   let a=-GR*Math.sin(G.thG);G.spinOut=false;
   if(dir&&wheelsDown){
     const vmax=(dir>0?VEH.vmax:7)*(1-.3*dmgK()),sp=dir*G.v,dry=MODES[MODE].fuel&&G.fuel<=0;
-    let want=dry?0:G.throttle*7.8*POWER*(isRescue()?.88-.03*G.load:1)*(G.perks.turbo?1.2:1)*(1-.5*dmgK())*clamp(1-sp/vmax,0,1);if(!dry&&!brk&&sp<1.2&&G.throttle<.1)want=Math.max(want,1.1);
+    let want=dry?0:G.throttle*7.8*POWER*(isRescue()?.88-.03*G.load:towPull())*(G.perks.turbo?1.2:1)*(1-.5*dmgK())*clamp(1-sp/vmax,0,1);if(!dry&&!brk&&sp<1.2&&G.throttle<.1)want=Math.max(want,1.1);
     const fdrive=fmax*(LOCK&&sk!==3?1.15:1);if(want>fdrive){G.spinOut=G.throttle>.5;want=fdrive;}
     a+=dir*want;
   }
@@ -751,7 +864,7 @@ function submitScore(){
     else{$('bSubmit').disabled=false;$('subMsg').textContent={slow_down:'Wait ten seconds and try again',tag_rejected:'Pick a different tag',offline:'Score hub unreachable'}[r&&r.error]||'Not posted ('+((r&&r.error)||'error')+')';}
   });
 }
-const ICONS={"fuelcan": "<path d=\"M9 6h11l4 4v17H9z\"/><path d=\"M13 6V3h5v3\"/><path d=\"M12 12l9 10M21 12l-9 10\"/>", "repair": "<path d=\"M20 4a6 6 0 0 0-6 8L4 22l4 4 10-10a6 6 0 0 0 8-6l-4 4-4-4z\"/>", "turbo": "<circle cx=\"16\" cy=\"16\" r=\"11\"/><path d=\"M16 16m0-6a6 6 0 1 1-6 6a3 3 0 0 1 6 0\"/><path d=\"M27 16h3\"/>", "sticky": "<circle cx=\"14\" cy=\"16\" r=\"10\"/><circle cx=\"14\" cy=\"16\" r=\"4\"/><path d=\"M26 6c2 3 2 5 0 6c-2-1-2-3 0-6zM27 18c1.5 2 1.5 4 0 4.5c-1.5-.5-1.5-2.5 0-4.5z\"/>", "tires": "<circle cx=\"16\" cy=\"16\" r=\"12\"/><circle cx=\"16\" cy=\"16\" r=\"5\"/><path d=\"M28.0 16.0L24.5 16.0\"/><path d=\"M24.5 24.5L22.0 22.0\"/><path d=\"M16.0 28.0L16.0 24.5\"/><path d=\"M7.5 24.5L10.0 22.0\"/><path d=\"M4.0 16.0L7.5 16.0\"/><path d=\"M7.5 7.5L10.0 10.0\"/><path d=\"M16.0 4.0L16.0 7.5\"/><path d=\"M24.5 7.5L22.0 10.0\"/>", "lift": "<path d=\"M4 20h24v-5H9l-5 5z\"/><circle cx=\"10\" cy=\"25\" r=\"3\"/><circle cx=\"22\" cy=\"25\" r=\"3\"/><path d=\"M16 11V3M12.5 6.5 16 3l3.5 3.5\"/>", "lockers": "<circle cx=\"16\" cy=\"16\" r=\"5\"/><path d=\"M23.0 16.0L28.0 16.0\"/><path d=\"M21.0 20.9L24.5 24.5\"/><path d=\"M16.0 23.0L16.0 28.0\"/><path d=\"M11.1 21.0L7.5 24.5\"/><path d=\"M9.0 16.0L4.0 16.0\"/><path d=\"M11.0 11.1L7.5 7.5\"/><path d=\"M16.0 9.0L16.0 4.0\"/><path d=\"M20.9 11.0L24.5 7.5\"/><circle cx=\"16\" cy=\"16\" r=\"9\"/>", "sliders": "<path d=\"M4 14h24v-6H8z\"/><path d=\"M3 20h26M5 20v-4M27 20v-4M16 20v-4\"/><circle cx=\"9\" cy=\"26\" r=\"2.5\"/><circle cx=\"23\" cy=\"26\" r=\"2.5\"/>", "guard": "<path d=\"M6 8h20v16H6z\"/><path d=\"M11 8v16M16 8v16M21 8v16M6 14h20\"/><path d=\"M4 26h24\"/>", "snorkel": "<path d=\"M10 28V10a5 5 0 0 1 5-5h9v6\"/><path d=\"M6 28h8\"/><path d=\"M20 11h8\"/>", "chains": "<rect x=\"3\" y=\"11\" width=\"10\" height=\"6\" rx=\"3\"/><rect x=\"11\" y=\"13\" width=\"10\" height=\"6\" rx=\"3\" transform=\"rotate(0)\"/><rect x=\"19\" y=\"11\" width=\"10\" height=\"6\" rx=\"3\"/>", "shocks": "<path d=\"M16 2v5M16 25v5\"/><path d=\"M10 7h12M10 25h12\"/><path d=\"M11 9l10 3-10 3 10 3-10 3 10 3\"/>", "engine": "<path d=\"M5 12h4V9h10v3h3l3-3h3v15h-3l-3-3h-3v4H9v-4H5z\"/><path d=\"M12 9V5h4\"/>", "tank": "<path d=\"M9 6h14l3 4v18H6V10z\"/><path d=\"M14 6V3h4v3\"/><path d=\"M10 16h12M10 21h12\"/>"};
+const ICONS={"fuelcan": "<path d=\"M9 6h11l4 4v17H9z\"/><path d=\"M13 6V3h5v3\"/><path d=\"M12 12l9 10M21 12l-9 10\"/>", "repair": "<path d=\"M20 4a6 6 0 0 0-6 8L4 22l4 4 10-10a6 6 0 0 0 8-6l-4 4-4-4z\"/>", "turbo": "<circle cx=\"16\" cy=\"16\" r=\"11\"/><path d=\"M16 16m0-6a6 6 0 1 1-6 6a3 3 0 0 1 6 0\"/><path d=\"M27 16h3\"/>", "sticky": "<circle cx=\"14\" cy=\"16\" r=\"10\"/><circle cx=\"14\" cy=\"16\" r=\"4\"/><path d=\"M26 6c2 3 2 5 0 6c-2-1-2-3 0-6zM27 18c1.5 2 1.5 4 0 4.5c-1.5-.5-1.5-2.5 0-4.5z\"/>", "tires": "<circle cx=\"16\" cy=\"16\" r=\"12\"/><circle cx=\"16\" cy=\"16\" r=\"5\"/><path d=\"M28.0 16.0L24.5 16.0\"/><path d=\"M24.5 24.5L22.0 22.0\"/><path d=\"M16.0 28.0L16.0 24.5\"/><path d=\"M7.5 24.5L10.0 22.0\"/><path d=\"M4.0 16.0L7.5 16.0\"/><path d=\"M7.5 7.5L10.0 10.0\"/><path d=\"M16.0 4.0L16.0 7.5\"/><path d=\"M24.5 7.5L22.0 10.0\"/>", "lift": "<path d=\"M4 20h24v-5H9l-5 5z\"/><circle cx=\"10\" cy=\"25\" r=\"3\"/><circle cx=\"22\" cy=\"25\" r=\"3\"/><path d=\"M16 11V3M12.5 6.5 16 3l3.5 3.5\"/>", "lockers": "<circle cx=\"16\" cy=\"16\" r=\"5\"/><path d=\"M23.0 16.0L28.0 16.0\"/><path d=\"M21.0 20.9L24.5 24.5\"/><path d=\"M16.0 23.0L16.0 28.0\"/><path d=\"M11.1 21.0L7.5 24.5\"/><path d=\"M9.0 16.0L4.0 16.0\"/><path d=\"M11.0 11.1L7.5 7.5\"/><path d=\"M16.0 9.0L16.0 4.0\"/><path d=\"M20.9 11.0L24.5 7.5\"/><circle cx=\"16\" cy=\"16\" r=\"9\"/>", "sliders": "<path d=\"M4 14h24v-6H8z\"/><path d=\"M3 20h26M5 20v-4M27 20v-4M16 20v-4\"/><circle cx=\"9\" cy=\"26\" r=\"2.5\"/><circle cx=\"23\" cy=\"26\" r=\"2.5\"/>", "guard": "<path d=\"M6 8h20v16H6z\"/><path d=\"M11 8v16M16 8v16M21 8v16M6 14h20\"/><path d=\"M4 26h24\"/>", "snorkel": "<path d=\"M10 28V10a5 5 0 0 1 5-5h9v6\"/><path d=\"M6 28h8\"/><path d=\"M20 11h8\"/>", "chains": "<rect x=\"3\" y=\"11\" width=\"10\" height=\"6\" rx=\"3\"/><rect x=\"11\" y=\"13\" width=\"10\" height=\"6\" rx=\"3\" transform=\"rotate(0)\"/><rect x=\"19\" y=\"11\" width=\"10\" height=\"6\" rx=\"3\"/>", "shocks": "<path d=\"M16 2v5M16 25v5\"/><path d=\"M10 7h12M10 25h12\"/><path d=\"M11 9l10 3-10 3 10 3-10 3 10 3\"/>", "engine": "<path d=\"M5 12h4V9h10v3h3l3-3h3v15h-3l-3-3h-3v4H9v-4H5z\"/><path d=\"M12 9V5h4\"/>", "tank": "<path d=\"M9 6h14l3 4v18H6V10z\"/><path d=\"M14 6V3h4v3\"/><path d=\"M10 16h12M10 21h12\"/>", "rope": "<path d=\"M16 5a11 11 0 1 0 11 11\"/><path d=\"M16 10a6 6 0 1 0 6 6\"/><path d=\"M27 16l3 3M27 16l-3 3\"/>", "winch": "<rect x=\"6\" y=\"10\" width=\"14\" height=\"12\" rx=\"2\"/><path d=\"M9 10v12M13 10v12M17 10v12\"/><path d=\"M20 16h9M29 16v6\"/><path d=\"M27 22a2 2 0 1 0 4 0\"/>"};
 function iconEl(k){const d=document.createElement("div");d.className="ic";d.innerHTML='<svg viewBox="0 0 32 32">'+(ICONS[k]||"")+"</svg>";return d;}
 function openGarage(){G.garageDirty=false;renderGarage();$('garage').classList.add('on');tokRefresh(renderGarage);}
 function renderGarage(){
@@ -864,6 +977,7 @@ function step(dt){
       if(c&&!G.got.has(c.key)&&Math.hypot(c.x-G.x,c.z-G.z)<3.2&&Math.abs(c.y-(G.air?G.y:G.yG))<4){G.got.add(c.key);G.coins++;SHOP.bank+=15;saveShop();tone(1320,.08,'square',.04,1760);msg('Coin  +$15',1);}}
   }
   if(isRescue())rescueStep(dt);
+  else if(isRecovery())recoveryStep(dt);
   else if(G.alive){
     const fp=flagPos(G.next);if(Math.hypot(fp.x-G.x,fp.z-G.z)<7){
       G.flags++;G.next++;G.flagT=G.runT;G.splits.push(G.runT);chime();
@@ -954,7 +1068,7 @@ function L3(a,b){MODEL.push([[a[0],a[1]+MUP,a[2]],[b[0],b[1]+MUP,b[2]]]);}
 function poly3(pts,closed){for(let i=0;i<pts.length-1;i++)L3(pts[i],pts[i+1]);if(closed)L3(pts[pts.length-1],pts[0]);}
 function box3(x0,x1,y0,y1,z0,z1){const c=[[x0,y0,z0],[x1,y0,z0],[x1,y1,z0],[x0,y1,z0],[x0,y0,z1],[x1,y0,z1],[x1,y1,z1],[x0,y1,z1]];
   [[0,1],[1,2],[2,3],[3,0],[4,5],[5,6],[6,7],[7,4],[0,4],[1,5],[2,6],[3,7]].forEach(([a,b])=>L3(c[a],c[b]));}
-function buildModel(){MODEL.length=0;({sxs:buildSxs,jeep:buildJeep,pickup:buildPickup})[VK]();}
+function buildModel(){MODEL.length=0;({sxs:buildSxs,jeep:buildJeep,suv:buildSuv,pickup:buildPickup})[VK]();}
 function buildJeep(){
   // tub
   box3(-.86,.86,.62,1.22,-1.78,.5);
@@ -1026,9 +1140,35 @@ function buildPickup(){
   for(const sx of[-1,1]){const pts=[];for(let k=0;k<=8;k++){const a=Math.PI*(k/8);pts.push([sx*.92,WR-MUP+Math.sin(a)*(WR+.18),sx>0?-A+Math.cos(a)*(WR+.18):-A+Math.cos(a)*(WR+.18)]);}poly3(pts);
     const fp=[];for(let k=0;k<=8;k++){const a=Math.PI*(k/8);fp.push([sx*.92,WR-MUP+Math.sin(a)*(WR+.18),A+Math.cos(a)*(WR+.18)]);}poly3(fp);}
   if(SHOP.eq.snorkel){poly3([[.9,1.1,1.5],[.95,1.1,1.5],[.95,2.1,.15],[.95,2.1,.32]]);}
+  if(VK==='pickup'&&typeof isRecovery==='function'&&isRecovery()){ // wrecker boom and wheel lift in the bed
+    poly3([[-.6,1.0,-1.3],[0,2.55,-2.55],[.6,1.0,-1.3]]);poly3([[-.6,1.0,-2.7],[0,2.55,-2.55],[.6,1.0,-2.7]]);
+    poly3([[0,2.55,-2.55],[0,2.4,-3.25]]);poly3([[0,2.4,-3.25],[0,1.4,-3.3]]);poly3([[-.12,1.4,-3.3],[.12,1.4,-3.3],[0,1.25,-3.35]],true);
+    poly3([[-.3,.62,-2.95],[-.3,.5,-3.55]]);poly3([[.3,.62,-2.95],[.3,.5,-3.55]]);poly3([[-.75,.5,-3.55],[.75,.5,-3.55]]);
+    for(const sx of[-.75,.75])poly3([[sx,.5,-3.55],[sx,.62,-3.7]]);}
+}
+function buildSuv(){
+  // boxy body, short sloped hood, upright glass, roof rails, round lamps, spare on the back door
+  for(const sx of[-1,1]){poly3([[sx*.86,.6,1.85],[sx*.86,.6,-1.95],[sx*.86,1.28,-1.95],[sx*.86,1.28,1.85]]);poly3([[sx*.88,.95,1.8],[sx*.88,.95,-1.9]]);}
+  poly3([[-.86,.6,1.85],[.86,.6,1.85]]);poly3([[-.86,.6,-1.95],[.86,.6,-1.95]]);
+  poly3([[-.84,1.3,.75],[.84,1.3,.75],[.8,1.22,1.9],[-.8,1.22,1.9]],true);
+  poly3([[-.72,.72,1.92],[.72,.72,1.92],[.72,1.18,1.92],[-.72,1.18,1.92]],true);
+  for(let i=-3;i<=3;i++)poly3([[i*.13,.95,1.93],[i*.13,1.15,1.93]]);
+  for(const sx of[-1,1]){const pts=[];for(let k=0;k<10;k++){const a=k/10*Math.PI*2;pts.push([sx*.56+Math.cos(a)*.11,1.03+Math.sin(a)*.11,1.94]);}poly3(pts,true);}
+  box3(-.95,.95,.52,.7,1.92,2.04);box3(-.95,.95,.52,.7,-2.05,-1.95);
+  poly3([[-.84,1.3,.72],[.84,1.3,.72],[.78,1.98,.2],[-.78,1.98,.2]],true);
+  poly3([[-.78,1.98,.2],[-.8,1.98,-1.85],[.8,1.98,-1.85],[.78,1.98,.2]]);
+  for(const sx of[-1,1]){poly3([[sx*.84,1.28,-1.95],[sx*.8,1.98,-1.85]]);poly3([[sx*.84,1.3,-.55],[sx*.8,1.98,-.55]]);poly3([[sx*.55,2.08,.05],[sx*.55,2.08,-1.7]]);
+    poly3([[sx*.55,1.98,.05],[sx*.55,2.08,.05]]);poly3([[sx*.55,1.98,-1.7],[sx*.55,2.08,-1.7]]);}
+  poly3([[-.84,1.28,-1.95],[.84,1.28,-1.95]]);
+  poly3([[-.84,1.26,.66],[.84,1.26,.66]]);poly3([[-.84,1.08,.56],[.84,1.08,.56]]);
+  for(const sx of[-.4,.4]){box3(sx-.22,sx+.22,.8,.98,-.5,-.02);poly3([[sx-.2,.98,-.5],[sx-.2,1.58,-.6],[sx+.2,1.58,-.6],[sx+.2,.98,-.5]]);}
+  {const p1=[],p2=[];for(let k=0;k<14;k++){const a=k/14*Math.PI*2;p1.push([Math.cos(a)*.38,1.05+Math.sin(a)*.38,-1.98]);p2.push([Math.cos(a)*.38,1.05+Math.sin(a)*.38,-2.2]);}
+   poly3(p1,true);poly3(p2,true);for(let k=0;k<14;k+=2)L3(p1[k],p2[k]);}
+  for(const sx of[-1,1])for(const sz of[-1,1]){const pts=[];for(let k=0;k<=8;k++){const a=Math.PI*(k/8);pts.push([sx*.9,WR-MUP+Math.sin(a)*(WR+.18),sz*A+Math.cos(a)*(WR+.18)]);}poly3(pts);}
+  if(SHOP.eq.snorkel){poly3([[.86,1.0,1.4],[.92,1.0,1.4],[.92,2.1,.6],[.92,2.1,.78]]);}
 }
 function setVehicle(k){VK=k;VEH=VEHS[k];applyRig();saveOpts();renderMenu();}
-applyRig();
+applyRig();makeWrecks();
 
 function bodyPose(){
   const B=basis(G.yaw,G.pitch,G.roll);let O;
@@ -1251,7 +1391,7 @@ function setCam(P,dt){
     const E=VEH.eye;pos=bw(P,E[0]+d*1.5,E[1]+MUP-Math.abs(G.leanFB)*.04,E[2]+G.leanFB*.18);B=rotAbout(rotAbout(P.B,'U',G.look),'F',-G.lean*.08);
     CAM.f=Math.min(W*.62,H*.9);CAM.cy=H*.46;
   }else if(mode==='chase'){
-    const cd=isRescue()?25:VK==='pickup'?10:8.5,ch=isRescue()?10:3.6;
+    const cd=isRescue()?25:isRecovery()&&G.tow?(G.tow.kind==='rope'?22:18):VK==='pickup'?10:8.5,ch=isRescue()?10:isRecovery()&&G.tow?9:3.6;
     const want=[G.x-f0[0]*cd,0,G.z-f0[2]*cd];want[1]=Math.max(P.O[1]+ch,heightAt(want[0],want[2])+1.8);
     if(!G.camP)G.camP=want.slice();const k=Math.min(1,dt*4);for(let i=0;i<3;i++)G.camP[i]+=(want[i]-G.camP[i])*k;
     pos=G.camP;B=lookAt(pos[0],pos[1],pos[2],P.O[0]+f0[0]*2,P.O[1]+1,P.O[2]+f0[2]*2);CAM.f=Math.min(W*.7,H*.95);CAM.cy=H*.42;
@@ -1301,7 +1441,10 @@ function render(dt){
   const pt=new Path2D(),pd=new Path2D(),pm=new Path2D();drawFx(pt,pd,pm);
   ctx.strokeStyle='rgba(90,80,70,.3)';ctx.lineWidth=2;ctx.stroke(pt);ctx.strokeStyle='rgba(176,140,84,.8)';ctx.lineWidth=1.6;ctx.stroke(pd);ctx.strokeStyle='rgba(112,72,38,.9)';ctx.stroke(pm);
   const cp=new Path2D();drawCoins(cp,cx0,cz0,90);ctx.strokeStyle='#c9930e';ctx.lineWidth=1.8;ctx.stroke(cp);
-  const fa=new Path2D(),fb=new Path2D();if(!isRescue())drawFlags(fa,fb);
+  const fa=new Path2D(),fb=new Path2D();if(!isRescue()&&!isRecovery())drawFlags(fa,fb);
+  const rw=new Path2D(),rbn=new Path2D(),rb=new Path2D(),rr=new Path2D(),rm=new Path2D();drawRecovery(rw,rbn,rb,rr,rm);
+  ctx.strokeStyle='rgba(112,72,38,.8)';ctx.lineWidth=1.4;ctx.stroke(rm);ctx.strokeStyle='#6b6f75';ctx.lineWidth=1.6;ctx.stroke(rw);ctx.strokeStyle='rgba(40,40,40,.85)';ctx.lineWidth=1.6;ctx.stroke(rbn);
+  ctx.strokeStyle='#2a62b0';ctx.lineWidth=1.6;ctx.stroke(rb);ctx.strokeStyle='#e08a00';ctx.lineWidth=2;ctx.stroke(rr);
   const ph=new Path2D(),pbase=new Path2D(),ptm=[new Path2D(),new Path2D()],ptr=new Path2D();drawRescue(ph,pbase,ptm);drawTrailer(ptr);
   ctx.strokeStyle='#d99a00';ctx.lineWidth=1.8;ctx.stroke(ph);ctx.strokeStyle='#2a62b0';ctx.lineWidth=1.6;ctx.stroke(pbase);
   for(let i=0;i<2;i++){ctx.strokeStyle=TEAMC[i];ctx.lineWidth=1.8;ctx.stroke(ptm[i]);}
@@ -1309,7 +1452,7 @@ function render(dt){
   ctx.strokeStyle='rgba(150,150,150,.7)';ctx.lineWidth=1.5;ctx.stroke(fb);ctx.strokeStyle='#c8362b';ctx.lineWidth=2.2;ctx.stroke(fa);
   const gp=new Path2D();drawGhost(gp);ctx.strokeStyle='rgba(42,98,176,.42)';ctx.lineWidth=1.4;ctx.stroke(gp);
   const cab=G.alive&&G.cam==='driver',jp=new Path2D();drawRig(P,jp,cab);
-  ctx.strokeStyle=G.alive?'#d2601a':'#c8362b';ctx.lineWidth=G.cam==='driver'&&G.alive?2.2:1.8;ctx.stroke(jp);
+  ctx.strokeStyle=G.alive?(VEH.color||'#d2601a'):'#c8362b';ctx.lineWidth=G.cam==='driver'&&G.alive?2.2:1.8;ctx.stroke(jp);
   if(G.alive&&G.cam==='driver')drawDashHud();
 }
 
@@ -1387,8 +1530,8 @@ function hud(dt){
   tiltGauge('gPitch',G.pitch,G.air?G.pitch:effPitch(),l.F,l.B,'Pitch',true);
   hudT-=dt;if(hudT>0)return;hudT=.1;
   $('cTime').textContent=fmtT(G.runT);
-  $('kFlags').textContent=CLIMBT?'Height':isRescue()?'Rescued':'Flags';
-  $('cFlags').textContent=isRescue()?G.flags+'/'+HIK.length+(G.load?' · +'+G.load+' aboard':''):CLIMBT?fmtAlt(Math.max(0,G.alt))+' / '+fmtAlt(G.maxAlt):G.flags+(G.flags?' · '+fmtT(G.flagT):'');
+  $('kFlags').textContent=CLIMBT?'Height':isRescue()?'Rescued':isRecovery()?'Jobs':'Flags';
+  $('cFlags').textContent=isRecovery()?G.flags+'/'+JOBS.length+(JOBS.some(j=>j.st==='skip')?' · '+JOBS.filter(j=>j.st==='skip').length+' skipped':''):isRescue()?G.flags+'/'+HIK.length+(G.load?' · +'+G.load+' aboard':''):CLIMBT?fmtAlt(Math.max(0,G.alt))+' / '+fmtAlt(G.maxAlt):G.flags+(G.flags?' · '+fmtT(G.flagT):'');
   $('cBest').textContent=CLIMBT?(G.best.alt?fmtAlt(G.best.alt):'none'):(G.best.flags?G.best.flags+' · '+fmtT(G.best.t):'none');
   $('chFuel').style.display=MODES[MODE].fuel?'':'none';
   $('fuelFill').style.width=Math.round(G.fuel*100)+'%';$('fuelFill').style.background=G.fuel<.2?'#c8362b':G.fuel<.4?'#c27a12':'#3f8a3f';
@@ -1507,19 +1650,19 @@ function frame(){
   requestAnimationFrame(frame);
 }
 function setPlay(m,land){MODE=m;LAND=land||LAND;CLIMBT=MODES[m].climb;SC=LAND==='forest'?11:26;SPATH=LAND==='dunes'?[-1,-1,5,6,-1,7]:[-1,4,5,6,-1,7];G.best=bestFor(comboKey());
-  ROCKS.clear();DECOR.clear();COINS.clear();LOGS.clear();makeHikers();saveOpts();renderMenu();}
+  ROCKS.clear();DECOR.clear();COINS.clear();LOGS.clear();makeHikers();makeJobs();buildModel();saveOpts();renderMenu();}
 function setMode(m){setPlay(m,LAND);}
-function baseOf(m){return MODES[m].rescue?'rescue':MODES[m].climb?'climb':'trail';}
-function modeKey(base,fuel){return base==='climb'?(fuel?'climbfuel':'climb'):base==='rescue'?(fuel?'rescuefuel':'rescue'):(fuel?'fuel':'trail');}
+function baseOf(m){return MODES[m].recovery?'recovery':MODES[m].rescue?'rescue':MODES[m].climb?'climb':'trail';}
+function modeKey(base,fuel){if(base==='recovery')return fuel?'recoveryfuel':'recovery';return base==='climb'?(fuel?'climbfuel':'climb'):base==='rescue'?(fuel?'rescuefuel':'rescue'):(fuel?'fuel':'trail');}
 function renderMenu(){
   const lb=$('lands');lb.replaceChildren();
   for(const l in LANDS){const b=document.createElement('button');b.textContent=LANDS[l].n;b.className=l===LAND?'on':'';b.addEventListener('click',()=>setPlay(MODE,l));lb.appendChild(b);}
   const vb=$('vehs');vb.replaceChildren();
   for(const v in VEHS){const b=document.createElement('button');b.textContent=VEHS[v].n;b.className=v===VK?'on':'';b.addEventListener('click',()=>setVehicle(v));vb.appendChild(b);}
   const box=$('modes');box.replaceChildren();const fuel=MODES[MODE].fuel,cur=baseOf(MODE);
-  for(const base of['trail','climb','rescue']){const b=document.createElement('button');b.textContent=MODES[base].n;b.className=cur===base?'on':'';
+  for(const base of['trail','climb','rescue','recovery']){const b=document.createElement('button');b.textContent=MODES[base].n;b.className=cur===base?'on':'';
     b.addEventListener('click',()=>setPlay(modeKey(base,fuel)));box.appendChild(b);}
-  $('modeNote').textContent=VEHS[VK].note+' '+LANDS[LAND].note+' '+MODES[MODE].note;
+  $('modeNote').textContent=MODES[MODE].note;$('vehNote').textContent=VEHS[VK].note;
   $('tFuel').textContent='Fuel challenge '+(fuel?'on':'off');$('tFuel').classList.toggle('on',fuel);
   $('tGhost').textContent='Ghost '+(OPT.ghost?'on':'off');$('tGhost').classList.toggle('on',OPT.ghost);
   $('tDmg').textContent='Damage '+(OPT.damage?'on':'off');$('tDmg').classList.toggle('on',OPT.damage);
