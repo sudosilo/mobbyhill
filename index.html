@@ -8,7 +8,7 @@
 <meta name="theme-color" content="#e9e6dc">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%23eceae3'/%3E%3Cpath d='M2 24 L10 12 L16 18 L22 8 L30 24 Z' fill='none' stroke='%23d2601a' stroke-width='2.4'/%3E%3C/svg%3E">
 <!--
-MobbyHill v10. v1 written in chat with Claude Opus 5.5, Nov 14 2026.
+MobbyHill v11. v1 written in chat with Claude Opus 5.5, Nov 14 2026.
 Wireframe 4x4 on wireframe terrain. Driver seat camera with hood, dash and steering wheel, chase camera, top camera.
 Controls carried over from the dock yard truck game: drag steering wheel, D N R gears, Brake and Gas pedals.
 Phone tilt shifts the driver's weight left or right. The center of gravity moves with the driver,
@@ -23,6 +23,7 @@ v7 makes the buzzards fly from each flag to the next one instead of jumping ther
 v8 adds four landscapes (Mob the mountain, forest, canyon, dunes), each with its own ground, ground cover, scenery and leaderboards. Games are Mob the trail and Mob the hill, with Fuel challenge as a switch. The Store moves to the main menu, gets icons, and adds paddle tires, locking diffs, rock sliders, a brush guard, tire chains and long travel shocks.
 v9 adds three vehicles (side by side, Jeep, pickup) and Search and rescue: tow a trailer with two teammates following your track, find six hikers by their smoke, load three at a time and bring them back to base. The menu goes vehicle, map, challenge.
 v10 adds a fourth rig, a boxy 90s SUV in purple nicknamed the eggplant, and Off road recovery: yank stuck wrecks with a kinetic rope, winch flipped ones upright, and haul burned ones on a flatbed that only the pickup can pull. The pickup gets a wrecker boom and wheel lift. The Store adds a heavy rope and a fast winch.
+v11 adds tow sounds: hook and unhook clanks, rope twang and snap, wheel lift hiss and a winch whine.
 -->
 <style>
 :root{
@@ -444,7 +445,7 @@ const G={alive:true,gear:'N',gas:false,brake:false,throttle:0,wheelDeg:0,wheelHe
   cam:'driver',look:0,snd:true,started:false,
   x:0,z:0,y:0,vy:0,yaw:0,v:0,vh:0,roll:0,pitch:0,rollRate:0,pitchRate:0,yawRate:0,air:false,
   lR:0,lRv:0,sR:0,lP:0,lPv:0,sP:0,phiG:0,thG:0,yG:0,gwr:0,gwp:0,latF:0,aLong:0,
-  perks:{turbo:false,sticky:false},tow:null,load:0,loadT:0,s:0,coins:0,stuntCash:0,got:new Set(),twoT:0,whT:0,whS:0,airPitch:0,airRoll:0,stuntUntil:0,dist:0,flags:0,next:0,flips:0,fuel:1,outT:0,alt:0,maxAlt:0,altT:0,rec:[],recT:0,endWhy:'',runT0:null,runT:0,flagT:0,splits:[],ended:false,sentKey:'',spin:0,susp:[0,0,0,0],slide:false,spinOut:false,airT:0,
+  perks:{turbo:false,sticky:false},tow:null,winching:false,winchP:0,load:0,loadT:0,s:0,coins:0,stuntCash:0,got:new Set(),twoT:0,whT:0,whS:0,airPitch:0,airRoll:0,stuntUntil:0,dist:0,flags:0,next:0,flips:0,fuel:1,outT:0,alt:0,maxAlt:0,altT:0,rec:[],recT:0,endWhy:'',runT0:null,runT:0,flagT:0,splits:[],ended:false,sentKey:'',spin:0,susp:[0,0,0,0],slide:false,spinOut:false,airT:0,
   msgUntil:0,shake:0,crashT:0,crashWhy:'',warnT:0,wreck:null,camP:null,orbit:0,best:{dist:0,flags:0}};
 // best run on this phone for each mode: flags then time, or highest point for the climb modes. splits are kept to compare against
 const BESTS={};
@@ -607,21 +608,23 @@ function jobTarget(){
   if(n.type==='burned'&&VK==='pickup'&&!(G.tow&&G.tow.kind==='flat'))return base;
   return{x:n.x,z:n.z,y:heightAt(n.x,n.z)};}
 function rigFront(){const s=Math.sin(G.yaw),c=Math.cos(G.yaw),f=A+.9;return[G.x+s*f,G.z+c*f];}
-function attachTow(j){const kind=VK==='pickup'?'lift':'rope';G.tow={kind,job:j};j.st='towing';j.hooked=false;LT=(kind==='lift'?1.3:6)+2;
+function attachTow(j){const kind=VK==='pickup'?'lift':'rope';if(kind==='lift')hiss();clank();G.tow={kind,job:j};j.st='towing';j.hooked=false;LT=(kind==='lift'?1.3:6)+2;
   TRL.x=j.x;TRL.z=j.z;TRL.rf=0;trailerStep();msg(kind==='lift'?'On the wheel lift. Tow it to the yard':'On the tow rope. Drag it to the yard',2.5);}
 function jobsLeft(){return JOBS.some(j=>j.st==='open'||j.st==='free'||j.st==='towing');}
 function recoveryStep(dt){
+  G.winching=false;
   if(!G.alive||G.ended)return;
   if(G.tow){trailerStep();if(!G.alive)return;}
   const sp=Math.abs(G.v),atBase=Math.hypot(G.x,G.z)<11,tj=G.tow&&G.tow.job,say=(t,sec,bad)=>{if(now()>G.blockMsgT){G.blockMsgT=now()+(sec||2.5);msg(t,sec||2.5,bad);}};
   const winchT=(SHOP.eq.winch?2:3.5)*(VK==='sxs'?1.4:1);
   if(atBase&&tj&&sp<1.5){G.loadT+=dt;if(G.loadT>1.5){
       tj.st='done';G.flags++;G.flagT=G.runT;G.splits.push(G.runT);const earn=150+{stuck:0,flipped:100,burned:200}[tj.type];SHOP.bank+=earn;saveShop();
+      if(G.tow.kind==='lift')hiss();clank();
       if(G.tow.kind==='flat')G.tow.job=null;else G.tow=null;G.loadT=0;if(MODES[MODE].fuel){G.fuel=1;G.outT=0;}chime();
       msg('Wreck in the yard. '+G.flags+' of '+JOBS.length+' cleared  +$'+earn+(MODES[MODE].fuel?'  tank full':''),3);saveBest();
       if(!jobsLeft())endRun(G.flags===JOBS.length?'All jobs cleared':'Every job you can do is done');}
     return;}
-  if(atBase&&!G.tow&&VK==='pickup'&&sp<1.5&&JOBS.some(j=>j.type==='burned'&&j.st==='open')){G.loadT+=dt;if(G.loadT>1){G.loadT=0;G.tow={kind:'flat',job:null};LT=4.4;trailerReset();chime();msg('Flatbed hitched. Go get the burned one',2.5);}return;}
+  if(atBase&&!G.tow&&VK==='pickup'&&sp<1.5&&JOBS.some(j=>j.type==='burned'&&j.st==='open')){G.loadT+=dt;if(G.loadT>1){G.loadT=0;G.tow={kind:'flat',job:null};LT=4.4;trailerReset();chime();msg('Flatbed hitched. Go get the burned one',2.5);clank();setTimeout(clank,180);}return;}
   if(tj){G.loadT=0;return;}
   let j=null,jd=1e9;for(const q of JOBS)if(q.st==='open'||q.st==='free'){const d=Math.hypot(q.x-G.x,q.z-G.z);if(d<jd){jd=d;j=q;}}
   if(!j||jd>13){G.loadT=0;return;}
@@ -632,21 +635,21 @@ function recoveryStep(dt){
   if(flat||j.type==='flipped'&&j.st==='open'){
     // winch: stay parked and the cable does the work
     if(sp>.5){if(jd<13)say(flat?'Stop and winch it onto the flatbed':'Stop and winch it back onto its wheels',2);return;}
-    j.prog=Math.min(1,j.prog+dt/winchT);if(j.type==='flipped'&&!flat)j.roll=Math.PI*(1-j.prog);
+    j.prog=Math.min(1,j.prog+dt/winchT);G.winching=true;G.winchP=j.prog;if(j.type==='flipped'&&!flat)j.roll=Math.PI*(1-j.prog);
     if(now()>G.blockMsgT){G.blockMsgT=now()+.4;msg((flat?'Winching onto the flatbed ':'Winching it over ')+Math.round(j.prog*100)+'%',.5);}
     if(j.prog>=1){j.prog=0;j.roll=0;chime();
-      if(flat){G.tow.job=j;j.st='towing';msg('Loaded on the flatbed. Take it to the yard',2.5);}
+      if(flat){G.tow.job=j;j.st='towing';msg('Loaded on the flatbed. Take it to the yard',2.5);clank();}
       else{j.st='free';thump(.5);msg('Back on its wheels',2);attachTow(j);}}
     return;}
   if(j.st==='free'){if(sp<1.5&&jd<9)attachTow(j);return;}
   // stuck: hook the kinetic rope, then hit it. the rope goes tight at its length and the speed you hit it with decides what happens
   const h=hitchXZ(),d=Math.hypot(h[0]-j.x,h[1]-j.z),RL=8,snap=(SHOP.eq.rope?14:10.5)+(VK==='pickup'?2:0);
-  if(!j.hooked){if(jd<9&&sp<1.5){j.hooked=true;j.pd=d;msg('Yank rope hooked. Pull away and hit it',2.5);}else if(jd<11)say('Stop next to it to hook the rope',2);return;}
+  if(!j.hooked){if(jd<9&&sp<1.5){j.hooked=true;j.pd=d;msg('Yank rope hooked. Pull away and hit it',2.5);clank();}else if(jd<11)say('Stop next to it to hook the rope',2);return;}
   if(d>RL){const rate=(d-j.pd)/dt;
     if(j.pd<=RL){
-      if(rate>snap){j.hooked=false;hurt(.05);G.v*=.5;thump(.8);G.shake=.4;msg('Rope snapped. Ease off and hook it again',2.5,true);j.pd=d;return;}
-      if(rate>2.2){G.v*=.35;thump(.7);G.shake=.35;j.st='free';j.yaw=Math.atan2(h[0]-j.x,h[1]-j.z);msg('Yanked free',2);attachTow(j);return;}
-      say('Not enough. Back up and hit it harder',2,true);}
+      if(rate>snap){ropeSnap();j.hooked=false;hurt(.05);G.v*=.5;thump(.8);G.shake=.4;msg('Rope snapped. Ease off and hook it again',2.5,true);j.pd=d;return;}
+      if(rate>2.2){twang(1);G.v*=.35;thump(.7);G.shake=.35;j.st='free';j.yaw=Math.atan2(h[0]-j.x,h[1]-j.z);msg('Yanked free',2);attachTow(j);return;}
+      if(now()>G.blockMsgT)twang(.4);say('Not enough. Back up and hit it harder',2,true);}
     const ux=(h[0]-j.x)/d,uz=(h[1]-j.z)/d;G.x-=ux*(d-RL);G.z-=uz*(d-RL);G.v=0;G.vh=0;
     j.pd=RL;return;}
   j.pd=d;
@@ -1560,7 +1563,7 @@ let AC=null,eng=null;
 function ac(){if(!AC){try{AC=new(window.AudioContext||window.webkitAudioContext)();}catch(e){AC=null;}}if(AC&&AC.state==='suspended')AC.resume();return AC;}
 function startEngine(){const a=ac();if(!a||eng)return;const o=a.createOscillator(),o2=a.createOscillator(),lp=a.createBiquadFilter(),g=a.createGain();
   o.type='sawtooth';o2.type='square';lp.type='lowpass';lp.frequency.value=420;g.gain.value=0;o.connect(lp);o2.connect(lp);lp.connect(g);g.connect(a.destination);o.start();o2.start();eng={o,o2,lp,g};}
-function engineTick(){if(!eng)return;const a=AC,t=a.currentTime,sp=Math.abs(G.air?G.vh:G.v);
+function engineTick(){winchTick();if(!eng)return;const a=AC,t=a.currentTime,sp=Math.abs(G.air?G.vh:G.v);
   const rpm=clamp(.18+sp/26+G.throttle*.35+(G.spinOut||G.air?G.throttle*.3:0),0,1.3);
   eng.o.frequency.setTargetAtTime(32+rpm*95,t,.06);eng.o2.frequency.setTargetAtTime(16+rpm*47,t,.06);eng.lp.frequency.setTargetAtTime(300+rpm*900,t,.08);
   eng.g.gain.setTargetAtTime(G.snd&&G.alive&&G.started&&!(MODES[MODE].fuel&&G.fuel<=0)?.035+.05*G.throttle:0,t,.08);}
@@ -1570,6 +1573,18 @@ function noise(dur,vol,freq){const a=G.snd&&ac();if(!a)return;const n=Math.floor
   const s=a.createBufferSource(),f=a.createBiquadFilter(),g=a.createGain();s.buffer=bf;f.type='lowpass';f.frequency.value=freq||900;g.gain.value=vol;s.connect(f);f.connect(g);g.connect(a.destination);s.start();}
 function thump(k){noise(.18,.25*k+.05,260);tone(70,.18,'sine',.12*k+.03,40);}
 function crashSnd(){noise(.9,.5,1400);tone(90,.6,'sawtooth',.08,35);}
+// tow sounds: metal clank on hook and unhook, rope twang when it goes tight, a crack when it snaps,
+// a hydraulic hiss for the wheel lift, and a winch motor that whines while it pulls
+function clank(){noise(.1,.22,3200);tone(240,.09,'square',.04,170);setTimeout(()=>tone(330,.06,'square',.025,260),60);}
+function twang(k){tone(110,.4,'sawtooth',.06*k+.02,48);noise(.2,.12*k,500);}
+function ropeSnap(){noise(.28,.55,7000);tone(1500,.18,'sawtooth',.06,180);setTimeout(()=>noise(.15,.2,900),90);}
+function hiss(){noise(.7,.12,6000);tone(180,.6,'triangle',.03,320);}
+let WN=null;
+function winchTick(){const a=AC;if(!a)return;const on=G.snd&&G.started&&G.winching;
+  if(on&&!WN){const o=a.createOscillator(),o2=a.createOscillator(),lp=a.createBiquadFilter(),g=a.createGain();o.type='sawtooth';o2.type='square';lp.type='lowpass';lp.frequency.value=900;g.gain.value=0;
+    o.connect(lp);o2.connect(lp);lp.connect(g);g.connect(a.destination);o.start();o2.start();WN={o,o2,g};}
+  if(!WN)return;const t=a.currentTime,f=110+G.winchP*90;
+  WN.o.frequency.setTargetAtTime(f,t,.05);WN.o2.frequency.setTargetAtTime(f*1.5+Math.sin(t*30)*4,t,.05);WN.g.gain.setTargetAtTime(on?.045:0,t,.06);}
 function chime(){tone(660,.15,'sine',.08);setTimeout(()=>tone(990,.25,'sine',.08),120);}
 function warnBeep(){const m=margins();if(!G.alive||G.air||m.min>7*DEG)return;if(now()<G.warnT)return;G.warnT=now()+.12+m.min/(7*DEG)*.4;tone(1250,.06,'square',.03);}
 
