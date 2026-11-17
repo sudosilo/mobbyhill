@@ -8,7 +8,7 @@
 <meta name="theme-color" content="#e9e6dc">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%23eceae3'/%3E%3Cpath d='M2 24 L10 12 L16 18 L22 8 L30 24 Z' fill='none' stroke='%23d2601a' stroke-width='2.4'/%3E%3C/svg%3E">
 <!--
-MobbyHill v6. v1 written in chat with Claude Opus 5.5, Nov 14 2026.
+MobbyHill v7. v1 written in chat with Claude Opus 5.5, Nov 14 2026.
 Wireframe 4x4 on wireframe terrain. Driver seat camera with hood, dash and steering wheel, chase camera, top camera.
 Controls carried over from the dock yard truck game: drag steering wheel, D N R gears, Brake and Gas pedals.
 Phone tilt shifts the driver's weight left or right. The center of gravity moves with the driver,
@@ -19,6 +19,7 @@ v3 adds fore and aft lean (tilt or the up and down arrows) that steers pitch in 
 v4 adds a mode menu: Trail, Fuel (flags refill the tank), Hill climb (one mountain, highest point wins) and Climb plus fuel, each with its own leaderboard. Ghost replays your best run in each mode. Damage mode makes hits stick until you pay for repairs in the garage.
 v5 adds a second currency. Tokens come from the score hub wallet, 1000 every calendar week by the server clock, and buy perks (fuel can, repair kit, turbo, sticky tires) or parts. Cash from flags still buys parts on the phone.
 v6 adds scenery (cactus, dead trees, brush, sun, clouds, buzzards over the next flag), wheel dust and tire tracks, coins to grab, and stunt cash for air time, flips, rolls, two wheel riding and wheelies.
+v7 makes the buzzards fly from each flag to the next one instead of jumping there.
 -->
 <style>
 :root{
@@ -384,7 +385,7 @@ function sampleGround(){
 function fit(h){return{phi:Math.atan2((h[1]+h[3])-(h[0]+h[2]),4*T),th:Math.atan2((h[0]+h[1])-(h[2]+h[3]),4*A),y:(h[0]+h[1]+h[2]+h[3])/4,tw:(h[0]-h[1]-h[2]+h[3])/4};}
 
 function resetRig(full){
-  if(full){G.x=0;G.z=0;G.yaw=0;G.dist=0;G.flags=0;G.next=0;G.flips=0;G.runT0=null;G.runT=0;G.flagT=0;G.splits=[];G.ended=false;G.sentKey='';G.fuel=1;G.outT=0;G.alt=0;G.maxAlt=0;G.altT=0;G.rec=[];G.recT=0;G.endWhy='';G.surf=0;G.depth=0;G.coins=0;G.stuntCash=0;G.got=new Set();TRK.L.length=0;TRK.R.length=0;TRK.d=0;DUST.length=0;G.perks={turbo:false,sticky:false};if(G.started&&(INV.turbo||INV.sticky)){G.perks={turbo:INV.turbo,sticky:INV.sticky};INV.turbo=false;INV.sticky=false;saveInv();}}
+  if(full){G.x=0;G.z=0;G.yaw=0;G.dist=0;G.flags=0;G.next=0;G.flips=0;G.runT0=null;G.runT=0;G.flagT=0;G.splits=[];G.ended=false;G.sentKey='';G.fuel=1;G.outT=0;G.alt=0;G.maxAlt=0;G.altT=0;G.rec=[];G.recT=0;G.endWhy='';G.surf=0;G.depth=0;G.coins=0;G.stuntCash=0;G.got=new Set();BIRD.x=null;TRK.L.length=0;TRK.R.length=0;TRK.d=0;DUST.length=0;G.perks={turbo:false,sticky:false};if(G.started&&(INV.turbo||INV.sticky)){G.perks={turbo:INV.turbo,sticky:INV.sticky};INV.turbo=false;INV.sticky=false;saveInv();}}
   const h=sampleGround(),f=fit(h);
   G.y=f.y;G.yG=f.y;G.phiG=f.phi;G.thG=f.th;G.roll=f.phi;G.pitch=f.th;G.vy=0;G.v=0;G.vh=0;
   G.rollRate=G.pitchRate=G.yawRate=0;G.air=false;G.lR=G.lRv=G.sR=G.lP=G.lPv=G.sP=0;G.gwr=G.gwp=0;
@@ -929,6 +930,7 @@ function drawCoins(p,cx,cz,rad){
   }
 }
 // sun, drifting clouds, and buzzards circling over the next flag
+const BIRD={x:null,y:0,z:0,h:0,t:0};
 function drawSky(ps,pc,pb){
   const b=.6,rx=Math.cos(b),rz=-Math.sin(b),C=[CAM.x+Math.sin(b)*1700,CAM.y+560,CAM.z+Math.cos(b)*1700];let prev=null;
   for(let k=0;k<=20;k++){const a=k/20*6.283,q=[C[0]+rx*Math.cos(a)*70,C[1]+Math.sin(a)*70,C[2]+rz*Math.cos(a)*70];if(prev)segW(ps,prev,q);prev=q;}
@@ -936,9 +938,20 @@ function drawSky(ps,pc,pb){
   const prof=[[-1,0],[-.8,.25],[-.5,.3],[-.35,.6],[0,.7],[.3,.5],[.45,.3],[.8,.2],[1,0],[-1,0]];
   for(let k=0;k<6;k++){const bb=k*1.05+now()*.004,w=150+40*(k%3),cx=CAM.x+Math.sin(bb)*1500,cz=CAM.z+Math.cos(bb)*1500,cy=CAM.y+300+50*(k%3),ux=Math.cos(bb),uz=-Math.sin(bb);prev=null;
     for(const pt of prof){const q=[cx+ux*pt[0]*w,cy+pt[1]*w*.4,cz+uz*pt[0]*w];if(prev)segW(pc,prev,q);prev=q;}}
-  const f=flagPos(G.next),t=now();
-  for(let k=0;k<3;k++){const a=t*.6+k*2.1,r=13+k*2,p=[f.x+Math.cos(a)*r,f.y+24+k*2.5,f.z+Math.sin(a)*r],fl=Math.sin(t*5+k*2)*.7;
-    segW(pb,p,[p[0]+Math.cos(a)*1.7,p[1]+fl,p[2]+Math.sin(a)*1.7]);segW(pb,p,[p[0]-Math.cos(a)*1.7,p[1]+fl,p[2]-Math.sin(a)*1.7]);}
+  // the flock flies from flag to flag. it glides toward the next flag at about 14 m/s, then circles it again
+  const f=flagPos(G.next),t=now(),dt=Math.min(.1,t-(BIRD.t||t));BIRD.t=t;
+  const tx=f.x,ty=f.y+24,tz=f.z;
+  if(BIRD.x===null||Math.hypot(tx-BIRD.x,tz-BIRD.z)>600){BIRD.x=tx;BIRD.y=ty;BIRD.z=tz;}
+  const dx=tx-BIRD.x,dy=ty-BIRD.y,dz=tz-BIRD.z,d=Math.hypot(dx,dz),mv=Math.min(d,14*dt);
+  if(d>.01){BIRD.x+=dx/d*mv;BIRD.z+=dz/d*mv;BIRD.h=Math.atan2(dz,dx);}
+  BIRD.y+=dy*Math.min(1,dt*.8);
+  const travel=clamp(d/40,0,1); // 1 while flying across, 0 once circling the new flag
+  for(let k=0;k<3;k++){
+    const a=t*.6+k*2.1,r=(13+k*2)*(1-travel)+(2+k*2.5)*travel;
+    const cx=BIRD.x-Math.cos(BIRD.h)*k*3*travel,cz=BIRD.z-Math.sin(BIRD.h)*k*3*travel;
+    const p=[cx+Math.cos(a)*r,BIRD.y+k*2.5,cz+Math.sin(a)*r],fl=Math.sin(t*(5+travel*4)+k*2)*.7;
+    const wa=travel>.5?BIRD.h+Math.PI/2:a;
+    segW(pb,p,[p[0]+Math.cos(wa)*1.7,p[1]+fl,p[2]+Math.sin(wa)*1.7]);segW(pb,p,[p[0]-Math.cos(wa)*1.7,p[1]+fl,p[2]-Math.sin(wa)*1.7]);}
 }
 // dust thrown by the rear wheels and the tracks they leave
 function fxStep(dt){
