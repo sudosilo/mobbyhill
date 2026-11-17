@@ -8,7 +8,7 @@
 <meta name="theme-color" content="#e9e6dc">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%23eceae3'/%3E%3Cpath d='M2 24 L10 12 L16 18 L22 8 L30 24 Z' fill='none' stroke='%23d2601a' stroke-width='2.4'/%3E%3C/svg%3E">
 <!--
-MobbyHill v12. v1 written in chat with Claude Opus 5.5, Nov 14 2026.
+MobbyHill v13. v1 written in chat with Claude Opus 5.5, Nov 14 2026.
 Wireframe 4x4 on wireframe terrain. Driver seat camera with hood, dash and steering wheel, chase camera, top camera.
 Controls carried over from the dock yard truck game: drag steering wheel, D N R gears, Brake and Gas pedals.
 Phone tilt shifts the driver's weight left or right. The center of gravity moves with the driver,
@@ -25,6 +25,7 @@ v9 adds three vehicles (side by side, Jeep, pickup) and Search and rescue: tow a
 v10 adds a fourth rig, a boxy 90s SUV in purple nicknamed the eggplant, and Off road recovery: yank stuck wrecks with a kinetic rope, winch flipped ones upright, and haul burned ones on a flatbed that only the pickup can pull. The pickup gets a wrecker boom and wheel lift. The Store adds a heavy rope and a fast winch.
 v11 adds tow sounds: hook and unhook clanks, rope twang and snap, wheel lift hiss and a winch whine.
 v12 adds weather: rain (slick dirt and slickrock, higher creeks, muddier ground), fog and dust storms (short view, dust gusts push the rig sideways), and snow (bare dirt turns to snow). The menu picks one or rolls a random one that suits the landscape.
+v13 locks the side by side, SUV and pickup behind tokens (1500, 1500 and 2500). The Jeep stays free. Spending goes through the score hub wallet.
 -->
 <style>
 :root{
@@ -136,6 +137,10 @@ input{user-select:text;-webkit-user-select:text}
 .modes button{border:2px solid var(--edge);background:#fff;border-radius:9px;padding:10px 4px;font-size:15px;font-weight:900}
 .modes button.on{background:#fbe6d6;border-color:var(--orange);color:#7a3510}
 .sc .mnote{text-align:center;font-size:13px;min-height:36px;margin-top:6px}
+.unl button:disabled{opacity:.45}
+.unl{display:none;margin-top:8px;background:#fff;border:2px solid var(--blue);border-radius:9px;padding:8px}.unl.on{display:block}
+#unlockTxt{font-size:13px;font-weight:800;text-align:center}
+.sc #vehs button.lk{color:var(--ink2);border-style:dashed}
 .sc .vnote{font-size:12px;color:var(--ink2);text-align:center;margin-top:5px}
 .sc .lbl{font-size:11px;font-weight:900;color:var(--ink2);letter-spacing:.06em;text-transform:uppercase;margin-top:10px;text-align:left}
 .sc .lbl+.modes{margin-top:4px}
@@ -219,6 +224,7 @@ input{user-select:text;-webkit-user-select:text}
     <div class="lbl">1. Vehicle</div>
     <div class="modes" id="vehs"></div>
     <p class="vnote" id="vehNote"></p>
+    <div class="unl" id="unlock"><div id="unlockTxt"></div><div class="row"><button class="go" id="unlockYes">Unlock</button><button id="unlockNo">Not now</button></div></div>
     <div class="lbl">2. Map</div>
     <div class="modes" id="lands"></div>
     <div class="lbl">3. Challenge</div>
@@ -257,6 +263,8 @@ const VEHS={
   pickup:{n:'Mob in a pickup',s:'Pickup',T:.82,A:1.62,wr:.45,cgh:.92,power:1.12,vmax:26,eye:[-.4,1.78,-.18],sw:[-.4,1.42,.22],col:[-.4,1.2,.5],cutY:1.12,cutZ:-.3,hitch:2.95,
     note:'Long and strong. Hard to flip end over end, wide turns, tips on side slopes.'}};
 let VK='jeep',VEH=VEHS.jeep;
+// the Jeep is free. the other rigs unlock with tokens from the weekly wallet
+const VEHPRICE={sxs:1500,suv:1500,pickup:2500};
 try{const o=JSON.parse(localStorage.getItem('mobbyhill-opts')||'null');if(o&&VEHS[o.veh]){VK=o.veh;VEH=VEHS[VK];T=VEH.T;A=VEH.A;}}catch(e){}
 // game modes. each has its own leaderboard on the score hub, its own best run and its own ghost
 const MODES={
@@ -299,8 +307,8 @@ const PARTS=[
   {k:'winch',name:'Winch',best:'Off road recovery',note:'A faster winch rights flipped wrecks and loads the flatbed in almost half the time.',opts:[{n:'Stock',c:0},{n:'Fast',c:350}]},
   {k:'engine',name:'Engine',best:'Every landscape',note:'More power for steep climbs and soft ground',opts:[{n:'Stock',c:0},{n:'Big V8',c:600}]},
   {k:'tank',name:'Fuel tank',best:'Fuel challenge',note:'A long range tank goes half again as far on one fill',opts:[{n:'Stock',c:0},{n:'Long range',c:350}]}];
-let SHOP={bank:0,own:{lift:[0],tires:[0],engine:[0],snorkel:[0],tank:[0],lockers:[0],sliders:[0],guard:[0],shocks:[0],chains:[0],rope:[0],winch:[0]},eq:{lift:0,tires:0,engine:0,snorkel:0,tank:0,lockers:0,sliders:0,guard:0,shocks:0,chains:0,rope:0,winch:0},dmg:0,pull:1};
-try{const sh=JSON.parse(localStorage.getItem('mobbyhill-shop')||'null');if(sh&&sh.own&&sh.eq){SHOP.bank=sh.bank||0;Object.assign(SHOP.own,sh.own);Object.assign(SHOP.eq,sh.eq);SHOP.dmg=sh.dmg||0;SHOP.pull=sh.pull||1;}}catch(e){}
+let SHOP={vehs:['jeep'],bank:0,own:{lift:[0],tires:[0],engine:[0],snorkel:[0],tank:[0],lockers:[0],sliders:[0],guard:[0],shocks:[0],chains:[0],rope:[0],winch:[0]},eq:{lift:0,tires:0,engine:0,snorkel:0,tank:0,lockers:0,sliders:0,guard:0,shocks:0,chains:0,rope:0,winch:0},dmg:0,pull:1};
+try{const sh=JSON.parse(localStorage.getItem('mobbyhill-shop')||'null');if(sh&&sh.own&&sh.eq){SHOP.bank=sh.bank||0;Object.assign(SHOP.own,sh.own);Object.assign(SHOP.eq,sh.eq);SHOP.dmg=sh.dmg||0;SHOP.pull=sh.pull||1;if(Array.isArray(sh.vehs))SHOP.vehs=sh.vehs;}}catch(e){}
 function saveShop(){try{localStorage.setItem('mobbyhill-shop',JSON.stringify(SHOP));}catch(e){}}
 // two currencies. cash is earned at flags and kept on the phone. tokens come from the score hub server,
 // 1000 every calendar week by the server's clock, and every token spend goes through the server
@@ -1190,7 +1198,10 @@ function buildSuv(){
   for(const sx of[-1,1])for(const sz of[-1,1]){const pts=[];for(let k=0;k<=8;k++){const a=Math.PI*(k/8);pts.push([sx*.9,WR-MUP+Math.sin(a)*(WR+.18),sz*A+Math.cos(a)*(WR+.18)]);}poly3(pts);}
   if(SHOP.eq.snorkel){poly3([[.86,1.0,1.4],[.92,1.0,1.4],[.92,2.1,.6],[.92,2.1,.78]]);}
 }
-function setVehicle(k){VK=k;VEH=VEHS[k];applyRig();saveOpts();renderMenu();}
+function ownsVeh(k){return k==='jeep'||SHOP.vehs.includes(k);}
+let VPEND=null;
+function setVehicle(k){if(!ownsVeh(k)){VPEND=k;renderMenu();return;}VPEND=null;VK=k;VEH=VEHS[k];applyRig();saveOpts();renderMenu();}
+if(!ownsVeh(VK)){VK='jeep';VEH=VEHS.jeep;}
 applyRig();makeWrecks();
 
 function bodyPose(){
@@ -1717,7 +1728,13 @@ function renderMenu(){
   const lb=$('lands');lb.replaceChildren();
   for(const l in LANDS){const b=document.createElement('button');b.textContent=LANDS[l].n;b.className=l===LAND?'on':'';b.addEventListener('click',()=>setPlay(MODE,l));lb.appendChild(b);}
   const vb=$('vehs');vb.replaceChildren();
-  for(const v in VEHS){const b=document.createElement('button');b.textContent=VEHS[v].n;b.className=v===VK?'on':'';b.addEventListener('click',()=>setVehicle(v));vb.appendChild(b);}
+  for(const v in VEHS){const b=document.createElement('button'),own=ownsVeh(v);b.textContent=VEHS[v].n+(own?'':'  ·  locked');b.className=v===VK?'on':own?'':'lk';
+    b.addEventListener('click',()=>setVehicle(v));vb.appendChild(b);}
+  const ub=$('unlock');ub.classList.toggle('on',!!VPEND);
+  if(VPEND){const pr=VEHPRICE[VPEND],have=TOK.bal;
+    $('unlockTxt').textContent=have===null?'Unlock '+VEHS[VPEND].n+' for '+pr+' tokens. Token server unreachable right now.':
+      have>=pr?'Unlock '+VEHS[VPEND].n+' for '+pr+' tokens? You have '+have+'.':'Unlock '+VEHS[VPEND].n+' for '+pr+' tokens. You have '+have+'. Tokens refill 1000 every week.';
+    $('unlockYes').disabled=have===null||have<pr;$('unlockYes').textContent='Unlock  '+pr;}
   const box=$('modes');box.replaceChildren();const fuel=MODES[MODE].fuel,cur=baseOf(MODE);
   for(const base of['trail','climb','rescue','recovery']){const b=document.createElement('button');b.textContent=MODES[base].n;b.className=cur===base?'on':'';
     b.addEventListener('click',()=>setPlay(modeKey(base,fuel)));box.appendChild(b);}
@@ -1731,6 +1748,12 @@ function renderMenu(){
   $('sTilt').textContent=G.tiltOn?'Start':'Start with tilt';$('sPlain').style.display=G.tiltOn?'none':'';
 }
 function openMenu(){G.started=false;renderMenu();$('start').classList.remove('hide');tokRefresh(renderMenu);}
+$('unlockNo').addEventListener('click',()=>{VPEND=null;renderMenu();});
+$('unlockYes').addEventListener('click',()=>{const k=VPEND;if(!k||!window.Scores||TOK.busy)return;TOK.busy=true;$('unlockTxt').textContent='Spending tokens...';
+  window.Scores.spend('mobbyhill',PID,'veh-'+k).then(r=>{TOK.busy=false;
+    if(r&&r.ok){TOK.bal=r.balance;if(!SHOP.vehs.includes(k))SHOP.vehs.push(k);saveShop();VPEND=null;setVehicle(k);return;}
+    if(r&&typeof r.balance==='number')TOK.bal=r.balance;renderMenu();
+    $('unlockTxt').textContent={not_enough_tokens:'Not enough tokens',slow_down:'One second, then try again',offline:'Token server unreachable'}[r&&r.error]||'Not unlocked ('+((r&&r.error)||'error')+')';});});
 $('tWx').addEventListener('click',()=>{const L=['clear','random','rain','fog','dust','snow'];WXPICK=L[(L.indexOf(WXPICK)+1)%L.length];saveOpts();renderMenu();});
 $('tGhost').addEventListener('click',()=>{OPT.ghost=!OPT.ghost;saveOpts();renderMenu();});
 $('tFuel').addEventListener('click',()=>{setPlay(modeKey(baseOf(MODE),!MODES[MODE].fuel));});
