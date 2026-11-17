@@ -8,7 +8,7 @@
 <meta name="theme-color" content="#e9e6dc">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%23eceae3'/%3E%3Cpath d='M2 24 L10 12 L16 18 L22 8 L30 24 Z' fill='none' stroke='%23d2601a' stroke-width='2.4'/%3E%3C/svg%3E">
 <!--
-MobbyHill v5. v1 written in chat with Claude Opus 5.5, Nov 14 2026.
+MobbyHill v6. v1 written in chat with Claude Opus 5.5, Nov 14 2026.
 Wireframe 4x4 on wireframe terrain. Driver seat camera with hood, dash and steering wheel, chase camera, top camera.
 Controls carried over from the dock yard truck game: drag steering wheel, D N R gears, Brake and Gas pedals.
 Phone tilt shifts the driver's weight left or right. The center of gravity moves with the driver,
@@ -18,6 +18,7 @@ v2 adds a run clock, flag split times against your best run, and posting runs to
 v3 adds fore and aft lean (tilt or the up and down arrows) that steers pitch in the air and shifts weight on climbs, stickier suspension, a garage with lift kits, mud tires, a bigger engine and a snorkel bought with flag cash, soft sand, mud and water crossings, and boulders that only taller tires can climb.
 v4 adds a mode menu: Trail, Fuel (flags refill the tank), Hill climb (one mountain, highest point wins) and Climb plus fuel, each with its own leaderboard. Ghost replays your best run in each mode. Damage mode makes hits stick until you pay for repairs in the garage.
 v5 adds a second currency. Tokens come from the score hub wallet, 1000 every calendar week by the server clock, and buy perks (fuel can, repair kit, turbo, sticky tires) or parts. Cash from flags still buys parts on the phone.
+v6 adds scenery (cactus, dead trees, brush, sun, clouds, buzzards over the next flag), wheel dust and tire tracks, coins to grab, and stunt cash for air time, flips, rolls, two wheel riding and wheelies.
 -->
 <style>
 :root{
@@ -43,6 +44,8 @@ button{font:inherit;color:inherit;cursor:pointer;touch-action:manipulation}
 
 #ticker{position:absolute;left:50%;transform:translateX(-50%);top:calc(env(safe-area-inset-top,0px) + 112px);width:max-content;max-width:94vw;background:var(--yellow);border:2px solid #b58d12;border-radius:6px;padding:4px 12px;font-size:14px;font-weight:800;text-align:center;color:#3a2f05;opacity:1;transition:opacity .3s}
 #ticker.off{opacity:0}
+#stunt{position:absolute;left:50%;top:31%;transform:translateX(-50%);font-size:25px;font-weight:900;color:var(--orange);text-shadow:0 2px 0 #fff,0 -1px 0 #fff;opacity:0;transition:opacity .5s;white-space:nowrap}
+#stunt.on{opacity:1;transition:none}
 #ticker.bad{background:#f3c9c4;border-color:var(--red);color:#5a1510}
 
 #side{position:absolute;right:8px;top:calc(env(safe-area-inset-top,0px) + 130px);display:flex;flex-direction:column;gap:6px;pointer-events:auto}
@@ -145,6 +148,7 @@ input{user-select:text;-webkit-user-select:text}
     </div>
   </div>
   <div id="ticker" class="off">Shift to D and hold Gas</div>
+  <div id="stunt"></div>
 
   <div id="side">
     <button class="sbtn" id="bCam">Driver</button>
@@ -194,7 +198,7 @@ input{user-select:text;-webkit-user-select:text}
 <div id="start">
   <div class="sc">
     <h1>MobbyHill</h1>
-    <p>Drag the wheel to steer, pick D or R, hold Gas. Red marks on the roll and pitch gauges are where the rig goes over. Tilt the phone or use the arrows to lean the driver.</p>
+    <p>Drag the wheel to steer, pick D or R, hold Gas. Red marks on the roll and pitch gauges are where the rig goes over. Tilt the phone or use the arrows to lean the driver. Coins and stunts pay cash.</p>
     <div class="modes" id="modes"></div>
     <p class="mnote" id="modeNote"></p>
     <div class="row"><button class="tog" id="tGhost">Ghost</button><button class="tog" id="tDmg">Damage</button></div>
@@ -313,6 +317,18 @@ function rockCell(ci,cj){const key=ci*100003+cj;let r=ROCKS.get(key);if(r!==unde
     if(surfAt(x,z).k===0)r={x,z,r:rad,h:Math.min(rad*.75,.25+hh(ci,cj,11)*1.05),s:hh(ci,cj,12)*6.28,b:baseH(x,z)};}
   if(ROCKS.size>20000)ROCKS.clear();ROCKS.set(key,r);return r;}
 function rockH(x,z){const k=rockCell(Math.floor(x/RC),Math.floor(z/RC));if(!k)return 0;const dx=x-k.x,dz=z-k.z,d2=(dx*dx+dz*dz)/(k.r*k.r);if(d2>=1)return 0;const t=1-d2;return k.h*t*Math.sqrt(t);}
+// scenery: cactus, dead trees and brush, placed by the same kind of cell hash as the rocks. it is only for looks
+const SC=26,DECOR=new Map();
+function decorCell(ci,cj){const key=ci*100003+cj;let d=DECOR.get(key);if(d!==undefined)return d;d=null;
+  const r=hh(ci,cj,31);if(r<.5){const x=(ci+.15+hh(ci,cj,32)*.7)*SC,z=(cj+.15+hh(ci,cj,33)*.7)*SC;
+    if(Math.hypot(x,z)>30&&surfAt(x,z).k<2&&!rockCell(Math.floor(x/RC),Math.floor(z/RC)))d={x,z,y:baseH(x,z),t:r<.2?0:r<.32?1:2,h:2.2+hh(ci,cj,34)*2.2,a:hh(ci,cj,35)*6.28};}
+  if(DECOR.size>20000)DECOR.clear();DECOR.set(key,d);return d;}
+// coins: spinning pickups worth cash, scattered off the straight line so they cost time to grab
+const CC=30,COINS=new Map();
+function coinCell(ci,cj){const key=ci*100003+cj;let c=COINS.get(key);if(c!==undefined)return c;c=null;
+  if(hh(ci,cj,41)<.45){const x=(ci+.1+hh(ci,cj,42)*.8)*CC,z=(cj+.1+hh(ci,cj,43)*.8)*CC;
+    if(Math.hypot(x,z)>50&&surfAt(x,z).k!==3)c={x,z,y:heightAt(x,z)+1.1,key};}
+  if(COINS.size>20000)COINS.clear();COINS.set(key,c);return c;}
 function heightAt(x,z){const b=baseH(x,z);if(CLIMBT||Math.hypot(x,z)<DRYR)return b+rockH(x,z);return b-carve(wetM(x,z))+rockH(x,z);}
 function waterY(x,z){return baseH(x,z)-.12;}
 function flagPos(i){if(CLIMBT){const z=80*(i+1),x=12*Math.sin(z/130);return{x,z,y:heightAt(x,z)};}const z=105*(i+1),x=60*Math.sin(z/240)+30*Math.sin(z/91+1.3);return{x,z,y:Math.max(heightAt(x,z),surfAt(x,z).k===3?waterY(x,z):-1e9)};}
@@ -326,7 +342,7 @@ const G={alive:true,gear:'N',gas:false,brake:false,throttle:0,wheelDeg:0,wheelHe
   cam:'driver',look:0,snd:true,started:false,
   x:0,z:0,y:0,vy:0,yaw:0,v:0,vh:0,roll:0,pitch:0,rollRate:0,pitchRate:0,yawRate:0,air:false,
   lR:0,lRv:0,sR:0,lP:0,lPv:0,sP:0,phiG:0,thG:0,yG:0,gwr:0,gwp:0,latF:0,aLong:0,
-  perks:{turbo:false,sticky:false},dist:0,flags:0,next:0,flips:0,fuel:1,outT:0,alt:0,maxAlt:0,altT:0,rec:[],recT:0,endWhy:'',runT0:null,runT:0,flagT:0,splits:[],ended:false,sentKey:'',spin:0,susp:[0,0,0,0],slide:false,spinOut:false,airT:0,
+  perks:{turbo:false,sticky:false},coins:0,stuntCash:0,got:new Set(),twoT:0,whT:0,whS:0,airPitch:0,airRoll:0,stuntUntil:0,dist:0,flags:0,next:0,flips:0,fuel:1,outT:0,alt:0,maxAlt:0,altT:0,rec:[],recT:0,endWhy:'',runT0:null,runT:0,flagT:0,splits:[],ended:false,sentKey:'',spin:0,susp:[0,0,0,0],slide:false,spinOut:false,airT:0,
   msgUntil:0,shake:0,crashT:0,crashWhy:'',warnT:0,wreck:null,camP:null,orbit:0,best:{dist:0,flags:0}};
 // best run on this phone for each mode: flags then time, or highest point for the climb modes. splits are kept to compare against
 const BESTS={};for(const m in MODES)BESTS[m]={flags:0,t:0,dist:0,alt:0,splits:[]};
@@ -368,10 +384,11 @@ function sampleGround(){
 function fit(h){return{phi:Math.atan2((h[1]+h[3])-(h[0]+h[2]),4*T),th:Math.atan2((h[0]+h[1])-(h[2]+h[3]),4*A),y:(h[0]+h[1]+h[2]+h[3])/4,tw:(h[0]-h[1]-h[2]+h[3])/4};}
 
 function resetRig(full){
-  if(full){G.x=0;G.z=0;G.yaw=0;G.dist=0;G.flags=0;G.next=0;G.flips=0;G.runT0=null;G.runT=0;G.flagT=0;G.splits=[];G.ended=false;G.sentKey='';G.fuel=1;G.outT=0;G.alt=0;G.maxAlt=0;G.altT=0;G.rec=[];G.recT=0;G.endWhy='';G.surf=0;G.depth=0;G.perks={turbo:false,sticky:false};if(G.started&&(INV.turbo||INV.sticky)){G.perks={turbo:INV.turbo,sticky:INV.sticky};INV.turbo=false;INV.sticky=false;saveInv();}}
+  if(full){G.x=0;G.z=0;G.yaw=0;G.dist=0;G.flags=0;G.next=0;G.flips=0;G.runT0=null;G.runT=0;G.flagT=0;G.splits=[];G.ended=false;G.sentKey='';G.fuel=1;G.outT=0;G.alt=0;G.maxAlt=0;G.altT=0;G.rec=[];G.recT=0;G.endWhy='';G.surf=0;G.depth=0;G.coins=0;G.stuntCash=0;G.got=new Set();TRK.L.length=0;TRK.R.length=0;TRK.d=0;DUST.length=0;G.perks={turbo:false,sticky:false};if(G.started&&(INV.turbo||INV.sticky)){G.perks={turbo:INV.turbo,sticky:INV.sticky};INV.turbo=false;INV.sticky=false;saveInv();}}
   const h=sampleGround(),f=fit(h);
   G.y=f.y;G.yG=f.y;G.phiG=f.phi;G.thG=f.th;G.roll=f.phi;G.pitch=f.th;G.vy=0;G.v=0;G.vh=0;
   G.rollRate=G.pitchRate=G.yawRate=0;G.air=false;G.lR=G.lRv=G.sR=G.lP=G.lPv=G.sP=0;G.gwr=G.gwp=0;
+  G.twoT=0;G.whT=0;
   G.alive=true;G.wreck=null;G.gear='N';G.throttle=0;G.wheelDeg=0;G.look=0;G.camP=null;G.latF=0;G.aLong=0;
   $('card').classList.remove('on');
 }
@@ -399,6 +416,9 @@ function updLift(ax,base,half,off,h,Fu,Fw,k2,jolt,dt){
   G['l'+ax]=L;G['l'+ax+'v']=Lv;G['s'+ax]=s;
 }
 
+// stunts pay cash: air time, flips and rolls you land, riding on two wheels, wheelies
+function stunt(t,cash){if(cash<=0)return;SHOP.bank+=cash;G.stuntCash+=cash;saveShop();const e=$('stunt');e.textContent=t+'  +$'+cash;e.classList.add('on');G.stuntUntil=now()+1.7;tone(880,.14,'triangle',.07,1320);}
+const DUST=[],TRK={L:[],R:[],d:0,x:0,z:0};
 function rockBlock(){
   const dv=Math.sign(G.v);if(!dv)return null;
   const s=Math.sin(G.yaw),c=Math.cos(G.yaw);
@@ -471,6 +491,8 @@ function groundStep(dt,gas,brk){
   const fr=effF();
   updLift('R',G.phiG,T,d,CGH,fr.ru,fr.rw,.45,joltR,dt);
   updLift('P',G.thG,A,CGZ+G.leanFB*FBMAX,CGH,fr.pu,fr.pw,1.1,joltP*.6,dt);
+  if(G.lR>.1)G.twoT+=dt;else if(G.lR===0){if(G.twoT>1)stunt('Two wheels '+G.twoT.toFixed(1)+'s',Math.round(G.twoT*25));G.twoT=0;}
+  if(G.lP>.1){G.whT+=dt;G.whS=G.sP;}else if(G.lP===0){if(G.whT>.8)stunt((G.whS===-1?'Wheelie ':'Nose stand ')+G.whT.toFixed(1)+'s',Math.round(G.whT*30));G.whT=0;}
   const r0=G.roll,p0=G.pitch;
   G.roll=G.phiG-G.sR*G.lR;G.pitch=G.thG-G.sP*G.lP;
   G.rollRate+=((G.roll-r0)/dt-G.rollRate)*Math.min(1,dt*20);G.pitchRate+=((G.pitch-p0)/dt-G.pitchRate)*Math.min(1,dt*20);
@@ -482,7 +504,7 @@ function groundStep(dt,gas,brk){
   const droop=.16+MUP*.4;
   if(G.y<=f.y){G.y=f.y;G.vy=Math.max(G.vy,gRate>0?gRate*.72:gRate);}
   else if(G.y-f.y>droop){
-    G.air=true;G.airT=0;
+    G.air=true;G.airT=0;G.airPitch=0;G.airRoll=0;G.twoT=0;G.whT=0;
     G.rollRate=clamp(G.gwr*.6-G.sR*Math.max(0,G.lRv),-1.2,1.2);G.pitchRate=clamp(G.gwp*.6-G.sP*Math.max(0,G.lPv),-1.5,1.5);
     G.lR=G.lRv=G.sR=G.lP=G.lPv=G.sP=0;
   }
@@ -497,7 +519,7 @@ function airStep(dt,gas,brk){
   G.x+=Math.sin(G.yaw)*G.vh*dt;G.z+=Math.cos(G.yaw)*G.vh*dt;G.dist+=Math.abs(G.vh)*dt;
   G.yaw+=G.yawRate*dt;G.yawRate*=Math.pow(.6,dt);
   G.pitchRate+=(-G.leanFB*2.2+(gas?.8:0)-(brk?.8:0))*dt;G.rollRate-=G.lean*1.6*dt;
-  G.roll+=G.rollRate*dt;G.pitch+=G.pitchRate*dt;
+  G.roll+=G.rollRate*dt;G.pitch+=G.pitchRate*dt;G.airPitch+=G.pitchRate*dt;G.airRoll+=G.rollRate*dt;
   G.susp=[-.12,-.12,-.12,-.12];
   const h=sampleGround(),f=fit(h);
   if(G.y<=f.y){
@@ -514,6 +536,10 @@ function airStep(dt,gas,brk){
     if(Math.abs(dphi)>.03){G.sR=dphi>0?-1:1;G.lR=Math.abs(dphi);G.lRv=clamp(-G.sR*G.rollRate*.4-vin*.12,-1.5,1.2);}
     if(Math.abs(dth)>.03){G.sP=dth>0?-1:1;G.lP=Math.abs(dth);G.lPv=clamp(-G.sP*G.pitchRate*.4-vin*.15,-1.5,1.2);}
     G.roll=f.phi-G.sR*G.lR;G.pitch=f.th-G.sP*G.lP;
+    const fl=Math.floor((Math.abs(G.airPitch)+1.2)/6.283),rl=Math.floor((Math.abs(G.airRoll)+1.2)/6.283);
+    if(fl)stunt((G.airPitch>0?'Backflip':'Frontflip')+(fl>1?' x'+fl:''),150*fl);
+    else if(rl)stunt('Barrel roll'+(rl>1?' x'+rl:''),150*rl);
+    else if(G.airT>.8)stunt('Air '+G.airT.toFixed(1)+'s',Math.round(G.airT*20));
   }
 }
 
@@ -537,7 +563,7 @@ function showCard(){
   $('cardS').textContent=runText();
   $('cardD').innerHTML='';
   const pk=[G.perks.turbo?'Turbo':'',G.perks.sticky?'Sticky tires':''].filter(Boolean).join(' and ');
-  const lines=[MODES[MODE].n+'  ·  Distance '+fmtD(G.dist)+(G.flips?'  ·  Flips '+G.flips:''),'Best here: '+bestText()].concat(pk?['Perks this run: '+pk]:[]);
+  const lines=[MODES[MODE].n+'  ·  Distance '+fmtD(G.dist)+(G.flips?'  ·  Flips '+G.flips:''),'Best here: '+bestText()].concat(G.coins||G.stuntCash?['Coins '+G.coins+'  ·  Stunt cash $'+G.stuntCash]:[]).concat(pk?['Perks this run: '+pk]:[]);
   lines.forEach((t,i)=>{if(i)$('cardD').appendChild(document.createElement('br'));$('cardD').appendChild(document.createTextNode(t));});
   $('cFlip').style.display=G.ended?'none':'';
   const key=runKey(),ok=canPost();$('bSubmit').disabled=!ok||G.sentKey===key||!window.Scores;
@@ -664,6 +690,10 @@ function step(dt){
   if(G.runT0!==null&&G.alive&&!G.ended&&G.runT>=G.recT&&G.rec.length<27000){
     G.recT+=GDT;const P=bodyPose();const r2=v=>Math.round(v*100)/100;
     G.rec.push(r2(P.O[0]),r2(P.O[1]),r2(P.O[2]),Math.round(G.yaw*1000)/1000,Math.round(G.pitch*1000)/1000,Math.round(G.roll*1000)/1000);
+  }
+  if(G.alive&&!G.ended){
+    for(const ox of[-3.2,3.2])for(const oz of[-3.2,3.2]){const c=coinCell(Math.floor((G.x+ox)/CC),Math.floor((G.z+oz)/CC));
+      if(c&&!G.got.has(c.key)&&Math.hypot(c.x-G.x,c.z-G.z)<3.2&&Math.abs(c.y-(G.air?G.y:G.yG))<4){G.got.add(c.key);G.coins++;SHOP.bank+=15;saveShop();tone(1320,.08,'square',.04,1760);msg('Coin  +$15',1);}}
   }
   if(G.alive){
     const fp=flagPos(G.next);if(Math.hypot(fp.x-G.x,fp.z-G.z)<7){
@@ -874,6 +904,63 @@ function drawGhost(path){
   for(const[a,b]of MODEL)segW(path,bw(P,a[0],a[1],a[2]),bw(P,b[0],b[1],b[2]));
   for(const sx of[-1,1])for(const sz of[-1,1]){let prev=null;for(let k=0;k<=10;k++){const a=k/10*6.283,q=bw(P,sx*T,WR+Math.sin(a)*WR,sz*A+Math.cos(a)*WR);if(prev)segW(path,prev,q);prev=q;}}
 }
+function drawDecor(pg,pb,cx,cz,rad){
+  const c0=Math.floor((cx-rad)/SC),c1=Math.floor((cx+rad)/SC),d0=Math.floor((cz-rad)/SC),d1=Math.floor((cz+rad)/SC);
+  for(let ci=c0;ci<=c1;ci++)for(let cj=d0;cj<=d1;cj++){
+    const d=decorCell(ci,cj);if(!d||Math.hypot(d.x-cx,d.z-cz)>rad)continue;
+    const c=Math.cos(d.a),s=Math.sin(d.a),X=d.x,Y=d.y,Z=d.z,h=d.h;
+    if(d.t===0){const w=.16; // cactus: a trunk and two arms
+      segW(pg,[X-c*w,Y,Z-s*w],[X-c*w,Y+h,Z-s*w]);segW(pg,[X+c*w,Y,Z+s*w],[X+c*w,Y+h,Z+s*w]);segW(pg,[X-c*w,Y+h,Z-s*w],[X+c*w,Y+h,Z+s*w]);
+      segW(pg,[X+c*w,Y+h*.45,Z+s*w],[X+c*.8,Y+h*.45,Z+s*.8]);segW(pg,[X+c*.8,Y+h*.45,Z+s*.8],[X+c*.8,Y+h*.8,Z+s*.8]);
+      segW(pg,[X-c*w,Y+h*.58,Z-s*w],[X-c*.7,Y+h*.58,Z-s*.7]);segW(pg,[X-c*.7,Y+h*.58,Z-s*.7],[X-c*.7,Y+h*.92,Z-s*.7]);
+    }else if(d.t===1){const top=[X,Y+h*.55,Z]; // dead tree
+      segW(pb,[X,Y,Z],top);
+      for(let k=0;k<3;k++){const a=d.a+k*2.1,e=[X+Math.cos(a)*h*.38,Y+h,Z+Math.sin(a)*h*.38],m=[(top[0]+e[0])/2,(top[1]+e[1])/2,(top[2]+e[2])/2];
+        segW(pb,top,e);segW(pb,m,[m[0]+Math.cos(a+1.2)*h*.2,m[1]+h*.18,m[2]+Math.sin(a+1.2)*h*.2]);}
+    }else{for(let k=0;k<6;k++){const a=d.a+k*1.05;segW(pg,[X,Y,Z],[X+Math.cos(a)*.75,Y+.45+.3*(k%2),Z+Math.sin(a)*.75]);}}
+  }
+}
+function drawCoins(p,cx,cz,rad){
+  const c0=Math.floor((cx-rad)/CC),c1=Math.floor((cx+rad)/CC),d0=Math.floor((cz-rad)/CC),d1=Math.floor((cz+rad)/CC),t=now()*3;
+  for(let ci=c0;ci<=c1;ci++)for(let cj=d0;cj<=d1;cj++){
+    const c=coinCell(ci,cj);if(!c||G.got.has(c.key)||Math.hypot(c.x-cx,c.z-cz)>rad)continue;
+    const a=t+c.x,dx=Math.cos(a)*.42,dz=Math.sin(a)*.42,y=c.y+Math.sin(t*.7+c.z)*.12,T1=[c.x,y+.55,c.z],B1=[c.x,y-.55,c.z],L1=[c.x-dx,y,c.z-dz],R1=[c.x+dx,y,c.z+dz];
+    segW(p,T1,L1);segW(p,L1,B1);segW(p,B1,R1);segW(p,R1,T1);segW(p,L1,R1);
+  }
+}
+// sun, drifting clouds, and buzzards circling over the next flag
+function drawSky(ps,pc,pb){
+  const b=.6,rx=Math.cos(b),rz=-Math.sin(b),C=[CAM.x+Math.sin(b)*1700,CAM.y+560,CAM.z+Math.cos(b)*1700];let prev=null;
+  for(let k=0;k<=20;k++){const a=k/20*6.283,q=[C[0]+rx*Math.cos(a)*70,C[1]+Math.sin(a)*70,C[2]+rz*Math.cos(a)*70];if(prev)segW(ps,prev,q);prev=q;}
+  for(let k=0;k<8;k++){const a=k/8*6.283+now()*.05;segW(ps,[C[0]+rx*Math.cos(a)*90,C[1]+Math.sin(a)*90,C[2]+rz*Math.cos(a)*90],[C[0]+rx*Math.cos(a)*125,C[1]+Math.sin(a)*125,C[2]+rz*Math.cos(a)*125]);}
+  const prof=[[-1,0],[-.8,.25],[-.5,.3],[-.35,.6],[0,.7],[.3,.5],[.45,.3],[.8,.2],[1,0],[-1,0]];
+  for(let k=0;k<6;k++){const bb=k*1.05+now()*.004,w=150+40*(k%3),cx=CAM.x+Math.sin(bb)*1500,cz=CAM.z+Math.cos(bb)*1500,cy=CAM.y+300+50*(k%3),ux=Math.cos(bb),uz=-Math.sin(bb);prev=null;
+    for(const pt of prof){const q=[cx+ux*pt[0]*w,cy+pt[1]*w*.4,cz+uz*pt[0]*w];if(prev)segW(pc,prev,q);prev=q;}}
+  const f=flagPos(G.next),t=now();
+  for(let k=0;k<3;k++){const a=t*.6+k*2.1,r=13+k*2,p=[f.x+Math.cos(a)*r,f.y+24+k*2.5,f.z+Math.sin(a)*r],fl=Math.sin(t*5+k*2)*.7;
+    segW(pb,p,[p[0]+Math.cos(a)*1.7,p[1]+fl,p[2]+Math.sin(a)*1.7]);segW(pb,p,[p[0]-Math.cos(a)*1.7,p[1]+fl,p[2]-Math.sin(a)*1.7]);}
+}
+// dust thrown by the rear wheels and the tracks they leave
+function fxStep(dt){
+  const s=Math.sin(G.yaw),c=Math.cos(G.yaw),dv=Math.sign(G.v)||1,sp=Math.abs(G.v);
+  const wl=[G.x-c*T-s*A*dv,G.z+s*T-c*A*dv],wr=[G.x+c*T-s*A*dv,G.z-s*T-c*A*dv];
+  if(G.started&&G.alive&&!G.air&&G.surf!==3&&(sp>2.5||G.spinOut)){
+    let n=Math.min(40,sp*2+(G.spinOut?25:0))*(G.surf===1?1.6:1)*dt;
+    while(n>0&&(n>=1||Math.random()<n)){n--;const w=Math.random()<.5?wl:wr;
+      DUST.push({x:w[0],y:G.yG+.15,z:w[1],vx:-s*dv*sp*.2+(Math.random()-.5)*2.4,vy:1+Math.random()*2.2,vz:-c*dv*sp*.2+(Math.random()-.5)*2.4,t:0,life:.5+Math.random()*.6,k:G.surf===2?1:0});}
+    if(DUST.length>80)DUST.splice(0,DUST.length-80);
+  }
+  for(let i=DUST.length-1;i>=0;i--){const d=DUST[i];d.t+=dt;if(d.t>d.life){DUST.splice(i,1);continue;}d.vy-=4*dt;d.x+=d.vx*dt;d.y+=d.vy*dt;d.z+=d.vz*dt;}
+  if(!G.started||!G.alive)return;
+  if(G.air){if(TRK.L.length&&TRK.L[TRK.L.length-1]){TRK.L.push(null);TRK.R.push(null);}return;}
+  if(Math.hypot(G.x-TRK.x,G.z-TRK.z)>1.3){TRK.x=G.x;TRK.z=G.z;
+    TRK.L.push([wl[0],heightAt(wl[0],wl[1])+.04,wl[1]]);TRK.R.push([wr[0],heightAt(wr[0],wr[1])+.04,wr[1]]);
+    if(TRK.L.length>70){TRK.L.shift();TRK.R.shift();}}
+}
+function drawFx(pt,pd,pm){
+  for(const tr of[TRK.L,TRK.R])for(let i=1;i<tr.length;i++)if(tr[i]&&tr[i-1])segW(pt,tr[i-1],tr[i]);
+  for(const d of DUST)segW(d.k?pm:pd,[d.x,d.y,d.z],[d.x+d.vx*.07,d.y+d.vy*.07+.05,d.z+d.vz*.07]);
+}
 function drawRidges(p){
   // far ring of wireframe peaks that rides along with the camera
   let prev=null;
@@ -914,7 +1001,10 @@ function render(dt){
   ctx.fillStyle=sky;ctx.fillRect(0,0,W,H);
   ctx.lineCap='round';
   const top=G.alive&&G.cam==='top';
-  if(!top){const pr=new Path2D();drawRidges(pr);ctx.strokeStyle='rgba(120,140,155,.45)';ctx.lineWidth=1;ctx.stroke(pr);}
+  if(!top){const pr=new Path2D();drawRidges(pr);ctx.strokeStyle='rgba(120,140,155,.45)';ctx.lineWidth=1;ctx.stroke(pr);
+    const ps=new Path2D(),pc=new Path2D(),pbd=new Path2D();drawSky(ps,pc,pbd);
+    ctx.strokeStyle='rgba(210,150,40,.7)';ctx.lineWidth=1.3;ctx.stroke(ps);ctx.strokeStyle='rgba(130,150,165,.5)';ctx.lineWidth=1.1;ctx.stroke(pc);
+    ctx.strokeStyle='rgba(46,51,56,.8)';ctx.lineWidth=1.4;ctx.stroke(pbd);}
   const bands=[new Path2D(),new Path2D(),new Path2D(),new Path2D(),new Path2D(),new Path2D(),new Path2D()];
   const cx0=top?P.O[0]:CAM.x,cz0=top?P.O[2]:CAM.z;
   drawGrid(GF,12,cx0,cz0,false,80,bands,r2=>3);
@@ -930,7 +1020,11 @@ function render(dt){
     for(let q=0;q<=16;q++){const a=q/16*6.283,p=[sp.x+Math.cos(a)*r,y,sp.z+Math.sin(a)*r];if(prev)segW(bands[6],prev,p);prev=p;}}
   if(G.depth>0&&G.alive){const y=waterY(G.x,G.z)+.03;let prev=null;for(let q=0;q<=20;q++){const a=q/20*6.283,r=2.6+Math.sin(tn*4+q)*.15,p=[G.x+Math.cos(a)*r*.8,y,G.z+Math.sin(a)*r];if(prev)segW(bands[6],prev,p);prev=p;}}
   ctx.strokeStyle='rgba(42,98,176,.9)';ctx.lineWidth=1.4;ctx.stroke(bands[6]);
-  const rp=new Path2D();drawRocks(rp,cx0,cz0,85);ctx.strokeStyle='rgba(122,92,60,.9)';ctx.lineWidth=1.3;ctx.stroke(rp);
+  const rp=new Path2D(),dg=new Path2D();drawRocks(rp,cx0,cz0,85);drawDecor(dg,rp,cx0,cz0,105);ctx.strokeStyle='rgba(122,92,60,.9)';ctx.lineWidth=1.3;ctx.stroke(rp);
+  ctx.strokeStyle='rgba(63,138,63,.9)';ctx.lineWidth=1.4;ctx.stroke(dg);
+  const pt=new Path2D(),pd=new Path2D(),pm=new Path2D();drawFx(pt,pd,pm);
+  ctx.strokeStyle='rgba(90,80,70,.3)';ctx.lineWidth=2;ctx.stroke(pt);ctx.strokeStyle='rgba(176,140,84,.8)';ctx.lineWidth=1.6;ctx.stroke(pd);ctx.strokeStyle='rgba(112,72,38,.9)';ctx.stroke(pm);
+  const cp=new Path2D();drawCoins(cp,cx0,cz0,90);ctx.strokeStyle='#c9930e';ctx.lineWidth=1.8;ctx.stroke(cp);
   const fa=new Path2D(),fb=new Path2D();drawFlags(fa,fb);
   ctx.strokeStyle='rgba(150,150,150,.7)';ctx.lineWidth=1.5;ctx.stroke(fb);ctx.strokeStyle='#c8362b';ctx.lineWidth=2.2;ctx.stroke(fa);
   const gp=new Path2D();drawGhost(gp);ctx.strokeStyle='rgba(42,98,176,.42)';ctx.lineWidth=1.4;ctx.stroke(gp);
@@ -1030,6 +1124,7 @@ function hud(dt){
   $('leanDot').style.left=(50+G.lean*44)+'%';
   $('bTilt').classList.toggle('on',G.tiltOn);
   const tk=$('ticker');if(now()>G.msgUntil)tk.classList.add('off');
+  if(now()>G.stuntUntil)$('stunt').classList.remove('on');
   if(G.alive&&G.depth>0){const k=G.depth/INTAKE;msg('Water '+G.depth.toFixed(2)+' m. Engine floods at '+INTAKE.toFixed(2)+' m',.4,k>.75);}
   if(G.alive&&!G.air){const m=margins();if(m.min<5*DEG)msg({L:'Tipping left. Lean right',R:'Tipping right. Lean left',B:'Going over backward. Ease off',F:'Going over the nose. Ease off'}[m.side],.5,true);}
 }
@@ -1127,11 +1222,11 @@ let last=now(),acc=0;
 function frame(){
   const t=now();let dt=Math.min(.05,t-last);last=t;
   if(G.started){acc+=dt;const h=1/120;while(acc>=h){step(h);acc-=h;}}
-  G.shake=Math.max(0,G.shake-dt*1.5);
+  G.shake=Math.max(0,G.shake-dt*1.5);fxStep(dt);
   render(dt);hud(dt);engineTick();warnBeep();
   requestAnimationFrame(frame);
 }
-function setMode(m){MODE=m;CLIMBT=MODES[m].climb;G.best=BESTS[m];ROCKS.clear();saveOpts();renderMenu();}
+function setMode(m){MODE=m;CLIMBT=MODES[m].climb;G.best=BESTS[m];ROCKS.clear();DECOR.clear();COINS.clear();saveOpts();renderMenu();}
 function renderMenu(){
   const box=$('modes');box.replaceChildren();
   for(const m in MODES){const b=document.createElement('button');b.textContent=MODES[m].n;b.className=m===MODE?'on':'';b.addEventListener('click',()=>setMode(m));box.appendChild(b);}
