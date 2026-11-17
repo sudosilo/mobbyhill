@@ -8,7 +8,7 @@
 <meta name="theme-color" content="#e9e6dc">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%23eceae3'/%3E%3Cpath d='M2 24 L10 12 L16 18 L22 8 L30 24 Z' fill='none' stroke='%23d2601a' stroke-width='2.4'/%3E%3C/svg%3E">
 <!--
-MobbyHill v7. v1 written in chat with Claude Opus 5.5, Nov 14 2026.
+MobbyHill v8. v1 written in chat with Claude Opus 5.5, Nov 14 2026.
 Wireframe 4x4 on wireframe terrain. Driver seat camera with hood, dash and steering wheel, chase camera, top camera.
 Controls carried over from the dock yard truck game: drag steering wheel, D N R gears, Brake and Gas pedals.
 Phone tilt shifts the driver's weight left or right. The center of gravity moves with the driver,
@@ -20,6 +20,7 @@ v4 adds a mode menu: Trail, Fuel (flags refill the tank), Hill climb (one mounta
 v5 adds a second currency. Tokens come from the score hub wallet, 1000 every calendar week by the server clock, and buy perks (fuel can, repair kit, turbo, sticky tires) or parts. Cash from flags still buys parts on the phone.
 v6 adds scenery (cactus, dead trees, brush, sun, clouds, buzzards over the next flag), wheel dust and tire tracks, coins to grab, and stunt cash for air time, flips, rolls, two wheel riding and wheelies.
 v7 makes the buzzards fly from each flag to the next one instead of jumping there.
+v8 adds four landscapes (Mob the mountain, forest, canyon, dunes), each with its own ground, ground cover, scenery and leaderboards. Games are Mob the trail and Mob the hill, with Fuel challenge as a switch. The Store moves to the main menu, gets icons, and adds paddle tires, locking diffs, rock sliders, a brush guard, tire chains and long travel shocks.
 -->
 <style>
 :root{
@@ -100,13 +101,17 @@ input{user-select:text;-webkit-user-select:text}
 .br.me{border-color:var(--orange);background:#fbe6d6}
 #boardList .empty{font-size:13px;color:var(--ink2);text-align:center;padding:10px}
 #board .loc{font-size:12px;color:var(--ink2);text-align:center;margin-top:8px}
-#garage{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);background:var(--panel);border:3px solid var(--green);border-radius:10px;padding:12px 14px;width:min(340px,92vw);display:none;pointer-events:auto;box-shadow:0 5px 0 #24552a;z-index:6;max-height:86vh;overflow-y:auto}
+#garage{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);background:var(--panel);border:3px solid var(--green);border-radius:10px;padding:12px 14px;width:min(380px,94vw);display:none;pointer-events:auto;box-shadow:0 5px 0 #24552a;z-index:30;max-height:90vh;overflow-y:auto}
 #garage.on{display:block}
 #garage .bt{font-size:18px;font-weight:900;color:var(--green);text-align:center}
 #bank{text-align:center;font-size:20px;font-weight:900;margin-top:2px}
 #tokLine{text-align:center;font-size:13px;font-weight:800;color:var(--blue);margin-top:2px}
 .sec{margin-top:12px;font-size:12px;font-weight:900;color:var(--ink2);letter-spacing:.04em;border-top:1px solid var(--edge);padding-top:6px}
-.part{margin-top:9px}.part .pn{font-size:13px;font-weight:900}.part .pd{font-size:11px;color:var(--ink2)}
+.part{margin-top:9px;display:flex;gap:9px;align-items:flex-start;background:#fff;border:1px solid var(--edge);border-radius:9px;padding:8px}
+.part .ic{flex:none;width:44px;height:44px;border-radius:8px;background:#f6f3ea;border:1px solid var(--edge);display:flex;align-items:center;justify-content:center;color:var(--orange)}
+.part .ic svg{width:34px;height:34px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.part .pi{flex:1;min-width:0}.part .pn{font-size:14px;font-weight:900}.part .pd{font-size:11px;color:var(--ink2);line-height:1.35}
+.part .bf{display:inline-block;font-size:10px;font-weight:800;color:#24552a;background:#dcefdc;border-radius:5px;padding:1px 6px;margin-top:2px}
 .opts{display:flex;gap:5px;margin-top:4px}
 .opt{flex:1;border:2px solid var(--edge);background:#fff;border-radius:7px;padding:7px 3px;font-size:12px;font-weight:800;line-height:1.2}
 .opt.eq{background:#cfe8cf;border-color:var(--green)}.opt.lock{color:var(--ink2)}
@@ -120,13 +125,18 @@ input{user-select:text;-webkit-user-select:text}
 .sc{background:var(--panel);border:2px solid var(--edge);border-radius:12px;padding:18px 16px;width:min(380px,100%);text-align:center;box-shadow:0 6px 0 #b9b6ab}
 .sc h1{font-size:30px;font-weight:900;color:var(--orange);letter-spacing:.02em}
 .sc p{font-size:14px;color:var(--ink2);line-height:1.45;margin-top:8px;text-align:left}
-.sc .row{display:flex;gap:8px;margin-top:14px}
+.sc .row{display:flex;gap:8px;margin-top:10px}
 .sc button{flex:1;border:2px solid var(--edge);background:#fff;border-radius:9px;padding:12px 6px;font-size:16px;font-weight:900}
 .sc button.go{background:var(--yellow);border-color:#b58d12}
 .modes{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:12px}
 .modes button{border:2px solid var(--edge);background:#fff;border-radius:9px;padding:10px 4px;font-size:15px;font-weight:900}
 .modes button.on{background:#fbe6d6;border-color:var(--orange);color:#7a3510}
 .sc .mnote{text-align:center;font-size:13px;min-height:36px;margin-top:6px}
+.sc .lbl{font-size:11px;font-weight:900;color:var(--ink2);letter-spacing:.06em;text-transform:uppercase;margin-top:10px;text-align:left}
+.sc .lbl+.modes{margin-top:4px}
+.sc button.store{background:#dcefdc;border-color:var(--green);color:#24552a}
+.sc{max-height:94vh;overflow-y:auto}
+#lands button.on{background:#e9f2e2;border-color:var(--green);color:#24552a}
 .sc button.tog{padding:8px 6px;font-size:14px}
 .sc button.tog.on{background:#cfe0f4;border-color:var(--blue)}
 .sc .best{font-size:13px;font-weight:800;margin-top:10px;color:var(--blue)}
@@ -160,7 +170,6 @@ input{user-select:text;-webkit-user-select:text}
     <button class="sbtn" id="bEnd">End</button>
     <button class="sbtn" id="bBoard">Scores</button>
     <button class="sbtn" id="bCan">Can</button>
-    <button class="sbtn" id="bGarage">Garage</button>
     <button class="sbtn" id="bNew">Menu</button>
   </div>
 
@@ -192,17 +201,21 @@ input{user-select:text;-webkit-user-select:text}
     <div id="sub"><input id="tagIn" maxlength="3" placeholder="ABC" autocomplete="off" autocapitalize="characters" spellcheck="false" aria-label="Three letter tag"><button id="bSubmit">Submit score</button></div>
     <div id="subMsg"></div>
     <div id="cardBtns"><button id="cFlip" class="go">Flip it back</button><button id="cBoard">Scores</button><button id="cNew">New run</button></div></div>
-  <div id="garage"><div class="bt">Garage</div><div id="bank"></div><div id="tokLine"></div><div id="parts"></div><div id="gStats"></div><div class="loc">Flags pay cash. Changing parts starts a new run.</div><button id="garageClose">Done</button></div>
   <div id="board"><div class="bt" id="boardTitle">MobbyHill top runs</div><div id="boardList"></div><div class="loc" id="boardLoc"></div><button id="boardClose">Close</button></div>
 </div>
 
+<div id="garage"><div class="bt">Store</div><div id="bank"></div><div id="tokLine"></div><div id="parts"></div><div id="gStats"></div><div class="loc">Flags, coins and stunts pay cash. Tokens arrive every week.</div><button id="garageClose">Done</button></div>
 <div id="start">
   <div class="sc">
     <h1>MobbyHill</h1>
-    <p>Drag the wheel to steer, pick D or R, hold Gas. Red marks on the roll and pitch gauges are where the rig goes over. Tilt the phone or use the arrows to lean the driver. Coins and stunts pay cash.</p>
+    <p>Steer with the wheel, pick D, hold Gas. Tilt the phone to lean. Coins and stunts pay cash.</p>
+    <div class="lbl">Landscape</div>
+    <div class="modes" id="lands"></div>
+    <div class="lbl">Game</div>
     <div class="modes" id="modes"></div>
     <p class="mnote" id="modeNote"></p>
-    <div class="row"><button class="tog" id="tGhost">Ghost</button><button class="tog" id="tDmg">Damage</button></div>
+    <div class="row"><button class="tog" id="tFuel">Fuel challenge</button><button class="tog" id="tGhost">Ghost</button><button class="tog" id="tDmg">Damage</button></div>
+    <div class="row"><button class="store" id="sStore">Store</button></div>
     <div class="row"><button class="go" id="sTilt">Start with tilt</button><button id="sPlain">Start</button></div>
     <div class="best" id="sBest"></div>
     <div class="best" id="sTok"></div>
@@ -222,23 +235,38 @@ const now=()=>performance.now()/1000;
 const T=0.78,A=1.2,CGZ=0.08,MU=0.85,LEANMAX=0.17,FBMAX=0.2;
 // game modes. each has its own leaderboard on the score hub, its own best run and its own ghost
 const MODES={
-  trail:{n:'Trail',slug:'mobbyhill',fuel:false,climb:false,note:'Reach the red flags across open country. More flags wins, then less time.'},
-  fuel:{n:'Fuel',slug:'mobbyhill-fuel',fuel:true,climb:false,note:'Same trail with a gas tank. Each flag refills it. Run dry and the run is over.'},
-  climb:{n:'Hill climb',slug:'mobbyhill-climb',fuel:false,climb:true,note:'One long mountain that keeps getting steeper. The highest point you reach is your score.'},
-  climbfuel:{n:'Climb + fuel',slug:'mobbyhill-climbfuel',fuel:true,climb:true,note:'The mountain with a gas tank. Flags refill it. Climb as high as the fuel lets you.'}};
-let MODE='trail',CLIMBT=false,OPT={ghost:true,damage:false};
-try{const o=JSON.parse(localStorage.getItem('mobbyhill-opts')||'null');if(o){if(MODES[o.mode])MODE=o.mode;if(typeof o.ghost==='boolean')OPT.ghost=o.ghost;if(typeof o.damage==='boolean')OPT.damage=o.damage;}}catch(e){}
+  trail:{n:'Mob the trail',slug:'mobbyhill',fuel:false,climb:false,note:'Reach the red flags. More flags wins, then less time.'},
+  fuel:{n:'Mob the trail + fuel',slug:'mobbyhill-fuel',fuel:true,climb:false,note:'Reach the red flags on one tank. Each flag refills it. Run dry and the run is over.'},
+  climb:{n:'Mob the hill',slug:'mobbyhill-climb',fuel:false,climb:true,note:'One long hill that keeps getting steeper. The highest point you reach is your score.'},
+  climbfuel:{n:'Mob the hill + fuel',slug:'mobbyhill-climbfuel',fuel:true,climb:true,note:'The long hill on one tank. Flags refill it. Climb as high as the fuel lets you.'}};
+// four landscapes. each one shapes the ground, the ground cover, the scenery and the colors
+const LANDS={
+  mountain:{n:'Mob the mountain',s:'Mountain',note:'Rocky peaks, ponds and mud, and snow on the high ground.',grid:'58,68,80',sky:['#dde6eb','#f2efe6','#ece7da'],ra:130,rb:60,rq:0},
+  forest:{n:'Mob the forest',s:'Forest',note:'Tight trees, fallen logs, deep mud and creek crossings.',grid:'46,84,56',sky:['#dce8de','#eef2e6','#e5ebdb'],ra:55,rb:25,rq:0},
+  canyon:{n:'Mob the canyon',s:'Canyon',note:'Grippy slickrock ledges, sand washes and big boulders.',grid:'156,74,42',sky:['#f1e2d0','#f7eee2','#f0e2d0'],ra:70,rb:20,rq:45},
+  dunes:{n:'Mob the dunes',s:'Dunes',note:'Soft sand everywhere, sharp crests and big jumps.',grid:'166,120,56',sky:['#f2e8d2','#f8f2e4','#f2e6cc'],ra:40,rb:15,rq:0}};
+let MODE='trail',LAND='mountain',CLIMBT=false,OPT={ghost:true,damage:false};
+try{const o=JSON.parse(localStorage.getItem('mobbyhill-opts')||'null');if(o){if(MODES[o.mode])MODE=o.mode;if(LANDS[o.land])LAND=o.land;if(typeof o.ghost==='boolean')OPT.ghost=o.ghost;if(typeof o.damage==='boolean')OPT.damage=o.damage;}}catch(e){}
 CLIMBT=MODES[MODE].climb;
-function saveOpts(){try{localStorage.setItem('mobbyhill-opts',JSON.stringify({mode:MODE,ghost:OPT.ghost,damage:OPT.damage}));}catch(e){}}
+function saveOpts(){try{localStorage.setItem('mobbyhill-opts',JSON.stringify({mode:MODE,land:LAND,ghost:OPT.ghost,damage:OPT.damage}));}catch(e){}}
+// mountain keeps the original keys so earlier bests, ghosts and leaderboards carry over
+function comboKey(){return LAND==='mountain'?MODE:MODE+'-'+LAND;}
+function slugNow(){return MODES[MODE].slug+(LAND==='mountain'?'':'-'+LAND);}
+function playName(){return MODES[MODE].n+'  ·  '+LANDS[LAND].s;}
 // these change with the parts bolted on in the garage
-let CGH=0.78,WR=0.42,MUP=0,CLIMB=.5,POWER=1,INTAKE=.75,MUDT=false;
+let CGH=0.78,WR=0.42,MUP=0,CLIMB=.5,POWER=1,INTAKE=.75,MUDT=false,PADDLE=false,LOCK=false,SLIDE=false,GUARD=false,SHOCK=false,CHAINS=false;
 const PARTS=[
-  {k:'lift',name:'Lift kit',note:'Taller climbs bigger rocks but tips sooner',opts:[{n:'Stock',c:0},{n:'2 inch',c:300},{n:'4 inch',c:800}]},
-  {k:'tires',name:'Tires',note:'Mud tires grip in mud, sand and water',opts:[{n:'All terrain',c:0},{n:'Mud',c:400}]},
-  {k:'engine',name:'Engine',note:'More power for steep climbs and soft ground',opts:[{n:'Stock',c:0},{n:'Big V8',c:600}]},
-  {k:'snorkel',name:'Air intake',note:'A snorkel lets you cross deep water',opts:[{n:'Stock',c:0},{n:'Snorkel',c:300}]},
-  {k:'tank',name:'Fuel tank',note:'A long range tank goes half again as far in the fuel modes',opts:[{n:'Stock',c:0},{n:'Long range',c:350}]}];
-let SHOP={bank:0,own:{lift:[0],tires:[0],engine:[0],snorkel:[0],tank:[0]},eq:{lift:0,tires:0,engine:0,snorkel:0,tank:0},dmg:0,pull:1};
+  {k:'tires',name:'Tires',best:'Forest and Dunes',note:'Mud tires grip in mud and water. Paddle tires float over soft sand.',opts:[{n:'All terrain',c:0},{n:'Mud',c:400},{n:'Paddle',c:450}]},
+  {k:'lift',name:'Lift kit',best:'Canyon',note:'Taller climbs bigger rocks but tips sooner',opts:[{n:'Stock',c:0},{n:'2 inch',c:300},{n:'4 inch',c:800}]},
+  {k:'lockers',name:'Locking diffs',best:'Canyon',note:'All four wheels pull together. More drive grip on ledges and steep climbs.',opts:[{n:'Open',c:0},{n:'Locked',c:500}]},
+  {k:'sliders',name:'Rock sliders',best:'Canyon',note:'Steel rails under the doors. Slide over rocks 15 cm taller and take less damage from ledges.',opts:[{n:'None',c:0},{n:'Sliders',c:350}]},
+  {k:'guard',name:'Brush guard',best:'Forest',note:'Pushes through saplings and lets you bounce off bigger trees at higher speed.',opts:[{n:'None',c:0},{n:'Guard',c:300}]},
+  {k:'snorkel',name:'Air intake',best:'Forest and Mountain',note:'A snorkel lets you cross deep water',opts:[{n:'Stock',c:0},{n:'Snorkel',c:300}]},
+  {k:'chains',name:'Tire chains',best:'Mountain',note:'Bite into snow on the high ground',opts:[{n:'None',c:0},{n:'Chains',c:250}]},
+  {k:'shocks',name:'Long travel shocks',best:'Dunes',note:'Softer landings off dune crests. Survive harder drops and take half the landing damage.',opts:[{n:'Stock',c:0},{n:'Long travel',c:550}]},
+  {k:'engine',name:'Engine',best:'Every landscape',note:'More power for steep climbs and soft ground',opts:[{n:'Stock',c:0},{n:'Big V8',c:600}]},
+  {k:'tank',name:'Fuel tank',best:'Fuel challenge',note:'A long range tank goes half again as far on one fill',opts:[{n:'Stock',c:0},{n:'Long range',c:350}]}];
+let SHOP={bank:0,own:{lift:[0],tires:[0],engine:[0],snorkel:[0],tank:[0],lockers:[0],sliders:[0],guard:[0],shocks:[0],chains:[0]},eq:{lift:0,tires:0,engine:0,snorkel:0,tank:0,lockers:0,sliders:0,guard:0,shocks:0,chains:0},dmg:0,pull:1};
 try{const sh=JSON.parse(localStorage.getItem('mobbyhill-shop')||'null');if(sh&&sh.own&&sh.eq){SHOP.bank=sh.bank||0;Object.assign(SHOP.own,sh.own);Object.assign(SHOP.eq,sh.eq);SHOP.dmg=sh.dmg||0;SHOP.pull=sh.pull||1;}}catch(e){}
 function saveShop(){try{localStorage.setItem('mobbyhill-shop',JSON.stringify(SHOP));}catch(e){}}
 // two currencies. cash is earned at flags and kept on the phone. tokens come from the score hub server,
@@ -250,7 +278,7 @@ let INV={fuelcan:0,turbo:false,sticky:false};
 try{const v=JSON.parse(localStorage.getItem('mobbyhill-inv')||'null');if(v)Object.assign(INV,v);}catch(e){}
 function saveInv(){try{localStorage.setItem('mobbyhill-inv',JSON.stringify(INV));}catch(e){}}
 const PERKS=[
-  {k:'fuelcan',n:'Fuel can',d:'Half a tank, used from the Can button in the fuel modes'},
+  {k:'fuelcan',n:'Fuel can',d:'Half a tank, used from the Can button in Fuel challenge'},
   {k:'repair',n:'Repair kit',d:'Fixes half of the damage right away'},
   {k:'turbo',n:'Turbo',d:'20% more power for your next run'},
   {k:'sticky',n:'Sticky tires',d:'15% more grip for your next run'}];
@@ -278,7 +306,8 @@ function tokSpend(item,done){
 }
 function applyRig(){
   const L=SHOP.eq.lift;WR=[.42,.47,.53][L];MUP=[0,.12,.24][L]+(WR-.42);CGH=.78+MUP*.9;CLIMB=WR*1.2+[0,.06,.12][L];
-  POWER=SHOP.eq.engine?1.35:1;INTAKE=(SHOP.eq.snorkel?1.5:.75)+MUP;MUDT=!!SHOP.eq.tires;
+  POWER=SHOP.eq.engine?1.35:1;INTAKE=(SHOP.eq.snorkel?1.5:.75)+MUP;MUDT=SHOP.eq.tires===1;PADDLE=SHOP.eq.tires===2;
+  LOCK=!!SHOP.eq.lockers;SLIDE=!!SHOP.eq.sliders;GUARD=!!SHOP.eq.guard;SHOCK=!!SHOP.eq.shocks;CHAINS=!!SHOP.eq.chains;if(SLIDE)CLIMB+=.15;
   if(typeof buildModel==='function')buildModel();
 }
 
@@ -290,10 +319,22 @@ function vn(x,z,s){const ix=Math.floor(x),iz=Math.floor(z),fx=x-ix,fz=z-iz,ux=fx
   const a=hh(ix,iz,s),b=hh(ix+1,iz,s),c=hh(ix,iz+1,s),d=hh(ix+1,iz+1,s);return(a+(b-a)*ux+(c-a)*uz+(a-b-c+d)*ux*uz)*2-1;}
 // hill climb mountain: a ramp that keeps steepening, a shallow bowl that keeps you near the line, and bumps on top
 function climbRamp(z){if(z<40)return 0;const u=z-40;return .09*u+u*u/5200;}
+// canyon ledges: the ground is cut into flat shelves with short steep risers between them
+function terrace(h,st){const t=h/st,fl=Math.floor(t);let u=clamp((t-fl-.55)/.45,0,1);u=u*u*(3-2*u);return st*(fl+u);}
+function ridge(v){const a=1-Math.abs(v);return a*a;}
 function climbH(x,z){const r=Math.hypot(x,z),k=Math.min(1.6,.35+Math.max(0,z)/700),f=Math.min(1,r/60),ff=f*f*(3-2*f);
-  return climbRamp(z)+Math.min(30,.0016*x*x)*(z>0?1:.4)+(6*vn(x/70,z/70,2)+2.4*vn(x/24,z/24,3)+.8*vn(x/8.5,z/8.5,4))*k*ff;}
+  const base=climbRamp(z)+Math.min(30,.0016*x*x)*(z>0?1:.4);
+  if(LAND==='canyon')return terrace(base+(5*vn(x/70,z/70,2)+1.8*vn(x/24,z/24,3))*k*ff,1.6)+.25*vn(x/9,z/9,4)*ff;
+  if(LAND==='dunes')return base+(7*ridge(vn(x/45,z/32,52))+2.5*vn(x/80,z/80,53))*k*ff;
+  if(LAND==='forest')return base+(4*vn(x/70,z/70,2)+1.6*vn(x/24,z/24,3)+.6*vn(x/8.5,z/8.5,4))*k*ff;
+  return base+(6*vn(x/70,z/70,2)+2.4*vn(x/24,z/24,3)+.8*vn(x/8.5,z/8.5,4))*k*ff;}
 function baseH(x,z){if(CLIMBT)return climbH(x,z);const r=Math.hypot(x,z),k=Math.min(1.8,.4+r/600),f=Math.min(1,r/75),ff=f*f*(3-2*f);
+  if(LAND==='forest')return(16*vn(x/170,z/170,71)+8*vn(x/60,z/60,72)*k+2.5*vn(x/20,z/20,73)*k+.7*vn(x/8,z/8,74)*Math.min(1,k))*ff;
+  if(LAND==='canyon')return terrace((34*vn(x/220,z/220,61)+14*vn(x/80,z/80,62)*k+3*vn(x/25,z/25,63)*k)*ff,1.6)+.25*vn(x/9,z/9,64)*ff;
+  if(LAND==='dunes')return(20*ridge(vn(x/130,z/170,51))+7*ridge(vn(x/55,z/70,52))*k+4*vn(x/200,z/200,53))*ff;
   return(26*vn(x/180,z/180,1)+11*vn(x/66,z/66,2)*k+3.4*vn(x/24,z/24,3)*k+.9*vn(x/8.5,z/8.5,4)*Math.min(1,k))*ff;}
+function hasWater(){return!CLIMBT&&(LAND==='mountain'||LAND==='forest');}
+function snowLine(){return CLIMBT?180:22;}
 // wet ground: one noise field makes ponds and fords, with a ring of mud around them. another makes soft sand washes
 const DRYR=110;
 // wet ground only collects where the land is fairly flat, so ponds and mud sit in the low flats and not on hillsides
@@ -301,36 +342,64 @@ function coarseH(x,z){return 26*vn(x/180,z/180,1)+11*vn(x/66,z/66,2);}
 function wetM(x,z){const sl=(Math.abs(coarseH(x+3,z)-coarseH(x-3,z))+Math.abs(coarseH(x,z+3)-coarseH(x,z-3)))/12;
   return vn(x/130,z/130,21)*.75+vn(x/40,z/40,23)*.25-sl*2.5+.12;}
 function carve(m){return clamp((m-.4)*3,0,1.2);}
-function surfAt(x,z){ // k 0 dirt, 1 sand, 2 mud, 3 water. d is water depth in meters
-  if(Math.hypot(x,z)<DRYR)return{k:0,d:0};
-  if(CLIMBT)return vn(x/160,z/160,22)>.42?{k:1,d:0}:{k:0,d:0};
+function surfAt(x,z){ // k 0 dirt, 1 sand, 2 mud, 3 water, 4 slickrock, 5 snow. d is water depth in meters
+  const near=Math.hypot(x,z)<DRYR;
+  if(LAND==='canyon')return!near&&vn(x/120,z/120,65)>.3?{k:1,d:0}:{k:4,d:0};
+  if(LAND==='dunes')return near||vn(x/90,z/90,55)>.45?{k:0,d:0}:{k:1,d:0};
+  if(near)return{k:0,d:0};
+  if(LAND==='mountain'&&baseH(x,z)>snowLine())return{k:5,d:0};
+  if(CLIMBT){if(LAND==='forest')return vn(x/120,z/120,75)>.3?{k:2,d:0}:{k:0,d:0};return vn(x/160,z/160,22)>.42?{k:1,d:0}:{k:0,d:0};}
   const m=wetM(x,z),c=carve(m);
   if(c>.12)return{k:3,d:c-.12};
-  if(m>.3)return{k:2,d:0};
-  if(vn(x/160,z/160,22)>.35)return{k:1,d:0};
+  if(m>(LAND==='forest'?.15:.3))return{k:2,d:0};
+  if(LAND==='mountain'&&vn(x/160,z/160,22)>.35)return{k:1,d:0};
   return{k:0,d:0};
 }
-const SURF=['Dirt','Soft sand','Mud','Water'];
+const SURF=['Dirt','Soft sand','Mud','Water','Slickrock','Snow'];
 const RC=15,ROCKS=new Map();
 function rockCell(ci,cj){const key=ci*100003+cj;let r=ROCKS.get(key);if(r!==undefined)return r;
   r=null;const cx=(ci+.5)*RC,cz=(cj+.5)*RC,d0=Math.hypot(cx,cz);
-  if(d0>70&&hh(ci,cj,7)<Math.min(CLIMBT?.2:.5,.14+d0/2500)){const rad=.8+hh(ci,cj,8)*1.5,x=ci*RC+rad+hh(ci,cj,9)*(RC-2*rad),z=cj*RC+rad+hh(ci,cj,10)*(RC-2*rad);
-    if(surfAt(x,z).k===0)r={x,z,r:rad,h:Math.min(rad*.75,.25+hh(ci,cj,11)*1.05),s:hh(ci,cj,12)*6.28,b:baseH(x,z)};}
+  const rp={mountain:1,forest:.5,canyon:1.5,dunes:.08}[LAND];
+  if(d0>70&&hh(ci,cj,7)<Math.min(CLIMBT?.2:.5,.14+d0/2500)*rp){const rad=.8+hh(ci,cj,8)*1.5,x=ci*RC+rad+hh(ci,cj,9)*(RC-2*rad),z=cj*RC+rad+hh(ci,cj,10)*(RC-2*rad);
+    const sk=surfAt(x,z).k;if(sk===0||sk===4)r={x,z,r:rad,h:Math.min(rad*.75,.25+hh(ci,cj,11)*1.05),s:hh(ci,cj,12)*6.28,b:baseH(x,z)};}
   if(ROCKS.size>20000)ROCKS.clear();ROCKS.set(key,r);return r;}
 function rockH(x,z){const k=rockCell(Math.floor(x/RC),Math.floor(z/RC));if(!k)return 0;const dx=x-k.x,dz=z-k.z,d2=(dx*dx+dz*dz)/(k.r*k.r);if(d2>=1)return 0;const t=1-d2;return k.h*t*Math.sqrt(t);}
 // scenery: cactus, dead trees and brush, placed by the same kind of cell hash as the rocks. it is only for looks
-const SC=26,DECOR=new Map();
+// types: 0 cactus, 1 dead tree, 2 brush, 3 pine (solid), 4 sapling (solid, a brush guard flattens it), 5 rock spire (solid)
+// each landscape has its own mix. the cell size sets how thick it grows
+let SC=26;const DECOR=new Map();
+const DMIX={mountain:[[.22,3],[.32,1],[.5,2]],forest:[[.42,3],[.62,4],[.75,2]],canyon:[[.1,5],[.32,2],[.38,1]],dunes:[[.07,0],[.18,2]]};
+function nearLine(x,z){
+  if(CLIMBT){if(Math.abs(x-12*Math.sin(z/130))<5.5)return true;const i=Math.round(z/80)-1;if(i<0)return false;const f=flagPos(i);return Math.hypot(f.x-x,f.z-z)<9;}
+  // keep a lane open on the straight line between flags so the trail flows, and trees crowd its edges
+  const i=Math.floor(z/105);const A0=i<=0?{x:0,z:0}:flagPos(i-1),B0=flagPos(Math.max(0,i));
+  const dx=B0.x-A0.x,dz=B0.z-A0.z,L2=dx*dx+dz*dz||1,t=clamp(((x-A0.x)*dx+(z-A0.z)*dz)/L2,0,1);
+  if(Math.hypot(A0.x+dx*t-x,A0.z+dz*t-z)<4.5)return true;
+  const j=Math.round(z/105)-1;if(j<0)return false;const f=flagPos(j);return Math.hypot(f.x-x,f.z-z)<9;}
 function decorCell(ci,cj){const key=ci*100003+cj;let d=DECOR.get(key);if(d!==undefined)return d;d=null;
-  const r=hh(ci,cj,31);if(r<.5){const x=(ci+.15+hh(ci,cj,32)*.7)*SC,z=(cj+.15+hh(ci,cj,33)*.7)*SC;
-    if(Math.hypot(x,z)>30&&surfAt(x,z).k<2&&!rockCell(Math.floor(x/RC),Math.floor(z/RC)))d={x,z,y:baseH(x,z),t:r<.2?0:r<.32?1:2,h:2.2+hh(ci,cj,34)*2.2,a:hh(ci,cj,35)*6.28};}
+  const r=hh(ci,cj,31),mix=DMIX[LAND];let t=-1;for(const m of mix)if(r<m[0]){t=m[1];break;}
+  if(t>=0){const x=(ci+.15+hh(ci,cj,32)*.7)*SC,z=(cj+.15+hh(ci,cj,33)*.7)*SC,sk=surfAt(x,z).k;
+    const solid=t>=3;
+    if(Math.hypot(x,z)>30&&sk!==2&&sk!==3&&!rockCell(Math.floor(x/RC),Math.floor(z/RC))&&!(solid&&nearLine(x,z))){
+      const hgt=t===3?6+hh(ci,cj,34)*5:t===4?2+hh(ci,cj,34)*1.2:t===5?5+hh(ci,cj,34)*5:2.2+hh(ci,cj,34)*2.2;
+      d={key,x,z,y:baseH(x,z),t,h:hgt,a:hh(ci,cj,35)*6.28,solid,r:t===3?.45:t===4?.2:t===5?1:0};}}
   if(DECOR.size>20000)DECOR.clear();DECOR.set(key,d);return d;}
+// fallen logs in the forest. they are part of the ground, so the wheels climb over them
+const LC=17,LOGS=new Map();
+function logCell(ci,cj){const key=ci*100003+cj;let l=LOGS.get(key);if(l!==undefined)return l;l=null;
+  if(LAND==='forest'&&hh(ci,cj,81)<.32){const L=2+hh(ci,cj,82)*1.5,rad=.16+hh(ci,cj,83)*.14,x=(ci+.25+hh(ci,cj,84)*.5)*LC,z=(cj+.25+hh(ci,cj,85)*.5)*LC;
+    if(Math.hypot(x,z)>40&&surfAt(x,z).k!==3)l={x,z,L,rad,a:hh(ci,cj,86)*6.28};}
+  if(LOGS.size>20000)LOGS.clear();LOGS.set(key,l);return l;}
+function logH(x,z){if(LAND!=='forest')return 0;const l=logCell(Math.floor(x/LC),Math.floor(z/LC));if(!l)return 0;
+  const ux=Math.cos(l.a),uz=Math.sin(l.a),dx=x-l.x,dz=z-l.z,t=clamp(dx*ux+dz*uz,-l.L,l.L),px=dx-ux*t,pz=dz-uz*t,d=Math.hypot(px,pz),w=l.rad*1.6;
+  if(d>=w)return 0;return 2*l.rad*Math.sqrt(1-(d/w)*(d/w));}
 // coins: spinning pickups worth cash, scattered off the straight line so they cost time to grab
 const CC=30,COINS=new Map();
 function coinCell(ci,cj){const key=ci*100003+cj;let c=COINS.get(key);if(c!==undefined)return c;c=null;
   if(hh(ci,cj,41)<.45){const x=(ci+.1+hh(ci,cj,42)*.8)*CC,z=(cj+.1+hh(ci,cj,43)*.8)*CC;
     if(Math.hypot(x,z)>50&&surfAt(x,z).k!==3)c={x,z,y:heightAt(x,z)+1.1,key};}
   if(COINS.size>20000)COINS.clear();COINS.set(key,c);return c;}
-function heightAt(x,z){const b=baseH(x,z);if(CLIMBT||Math.hypot(x,z)<DRYR)return b+rockH(x,z);return b-carve(wetM(x,z))+rockH(x,z);}
+function heightAt(x,z){const b=baseH(x,z)+rockH(x,z)+logH(x,z);if(!hasWater()||Math.hypot(x,z)<DRYR)return b;return b-carve(wetM(x,z));}
 function waterY(x,z){return baseH(x,z)-.12;}
 function flagPos(i){if(CLIMBT){const z=80*(i+1),x=12*Math.sin(z/130);return{x,z,y:heightAt(x,z)};}const z=105*(i+1),x=60*Math.sin(z/240)+30*Math.sin(z/91+1.3);return{x,z,y:Math.max(heightAt(x,z),surfAt(x,z).k===3?waterY(x,z):-1e9)};}
 
@@ -346,10 +415,11 @@ const G={alive:true,gear:'N',gas:false,brake:false,throttle:0,wheelDeg:0,wheelHe
   perks:{turbo:false,sticky:false},coins:0,stuntCash:0,got:new Set(),twoT:0,whT:0,whS:0,airPitch:0,airRoll:0,stuntUntil:0,dist:0,flags:0,next:0,flips:0,fuel:1,outT:0,alt:0,maxAlt:0,altT:0,rec:[],recT:0,endWhy:'',runT0:null,runT:0,flagT:0,splits:[],ended:false,sentKey:'',spin:0,susp:[0,0,0,0],slide:false,spinOut:false,airT:0,
   msgUntil:0,shake:0,crashT:0,crashWhy:'',warnT:0,wreck:null,camP:null,orbit:0,best:{dist:0,flags:0}};
 // best run on this phone for each mode: flags then time, or highest point for the climb modes. splits are kept to compare against
-const BESTS={};for(const m in MODES)BESTS[m]={flags:0,t:0,dist:0,alt:0,splits:[]};
-try{const b=JSON.parse(localStorage.getItem('mobbyhill-best3')||'null');if(b)for(const m in MODES)if(b[m])Object.assign(BESTS[m],b[m]);
-  else{const o=JSON.parse(localStorage.getItem('mobbyhill-best2')||'null');if(o&&typeof o.flags==='number')Object.assign(BESTS.trail,o);}}catch(e){}
-G.best=BESTS[MODE];
+const BESTS={};
+function bestFor(k){if(!BESTS[k])BESTS[k]={flags:0,t:0,dist:0,alt:0,splits:[]};return BESTS[k];}
+try{const b=JSON.parse(localStorage.getItem('mobbyhill-best3')||'null');if(b){for(const k in b)Object.assign(bestFor(k),b[k]);}
+  else{const o=JSON.parse(localStorage.getItem('mobbyhill-best2')||'null');if(o&&typeof o.flags==='number')Object.assign(bestFor('trail'),o);}}catch(e){}
+G.best=bestFor(comboKey());
 function better(f,t,bf,bt){return f>bf||(f===bf&&f>0&&t<bt);}
 function runBetter(){const b=G.best;return CLIMBT?G.maxAlt>b.alt+.05:better(G.flags,G.flagT,b.flags,b.t);}
 // ghost: the best run's path, sampled five times a second, replayed beside you
@@ -360,7 +430,7 @@ function saveBest(){
   if(runBetter()){
     if(CLIMBT){b.alt=G.maxAlt;b.t=G.altT;}else{b.flags=G.flags;b.t=G.flagT;}
     b.splits=G.splits.slice();ch=true;
-    GHOST[MODE]={s:G.rec.slice()};try{localStorage.setItem('mobbyhill-ghost-'+MODE,JSON.stringify(GHOST[MODE]));}catch(e){}
+    const ck=comboKey();GHOST[ck]={s:G.rec.slice()};try{localStorage.setItem('mobbyhill-ghost-'+ck,JSON.stringify(GHOST[ck]));}catch(e){}
   }
   if(G.dist>b.dist){b.dist=G.dist;ch=true;}
   if(ch)try{localStorage.setItem('mobbyhill-best3',JSON.stringify(BESTS));}catch(e){}
@@ -412,7 +482,7 @@ function updLift(ax,base,half,off,h,Fu,Fw,k2,jolt,dt){
     L+=Lv*dt;
   }else{
     const a=liftAcc(s,L,base,half,off,h,Fu,Fw,k2)-Lv*.8;Lv+=a*dt;L+=Lv*dt;
-    if(L<=0){if(Lv<-1.1){thump(Math.min(1,-Lv/4));G.shake=Math.max(G.shake,.12);hurt(.008);}L=0;Lv=0;s=0;}
+    if(L<=0){if(Lv<-1.1){thump(Math.min(1,-Lv/4));G.shake=Math.max(G.shake,.12);hurt(SLIDE?.003:.008);}L=0;Lv=0;s=0;}
   }
   G['l'+ax]=L;G['l'+ax+'v']=Lv;G['s'+ax]=s;
 }
@@ -420,6 +490,16 @@ function updLift(ax,base,half,off,h,Fu,Fw,k2,jolt,dt){
 // stunts pay cash: air time, flips and rolls you land, riding on two wheels, wheelies
 function stunt(t,cash){if(cash<=0)return;SHOP.bank+=cash;G.stuntCash+=cash;saveShop();const e=$('stunt');e.textContent=t+'  +$'+cash;e.classList.add('on');G.stuntUntil=now()+1.7;tone(880,.14,'triangle',.07,1320);}
 const DUST=[],TRK={L:[],R:[],d:0,x:0,z:0};
+function treeBlock(){
+  const dv=Math.sign(G.v);if(!dv)return null;
+  const s=Math.sin(G.yaw),c=Math.cos(G.yaw),bz=dv*(A+.85);
+  for(const bx of[-T,0,T]){
+    const px=G.x+c*bx+s*bz,pz=G.z-s*bx+c*bz,ci=Math.floor(px/SC),cj=Math.floor(pz/SC);
+    for(let i=-1;i<=1;i++)for(let j=-1;j<=1;j++){const d=decorCell(ci+i,cj+j);if(!d||!d.solid||G.got.has('t'+d.key))continue;
+      const dx=d.x-px,dz=d.z-pz;if(dx*dx+dz*dz>(d.r+.15)*(d.r+.15))continue;if((dx*s+dz*c)*dv<-.3)continue;return d;}
+  }
+  return null;
+}
 function rockBlock(){
   const dv=Math.sign(G.v);if(!dv)return null;
   const s=Math.sin(G.yaw),c=Math.cos(G.yaw);
@@ -450,15 +530,15 @@ function groundStep(dt,gas,brk){
   const sf=surfAt(G.x,G.z),sk=sf.k;
   if(sk!==G.surf){G.surf=sk;if(sk)msg(sk===3?'Water crossing '+sf.d.toFixed(1)+' m deep':SURF[sk],1.8);if(sk===3&&Math.abs(G.v)>3)splash(Math.abs(G.v));}
   G.depth=sf.d;
-  const grip=[1,MUDT?.92:.8,MUDT?.85:.55,MUDT?.85:.68][sk]*(G.perks.sticky?1.15:1);
-  const drag=[0,MUDT?.5:1.1,MUDT?.9:2.4,.6+sf.d*2.6][sk]+(sk===3?.025*G.v*G.v*sf.d:0);
+  const grip=[1,PADDLE?.98:MUDT?.92:.8,MUDT?.85:PADDLE?.6:.55,MUDT?.85:.68,1.12,CHAINS?.95:MUDT?.62:.5][sk]*(G.perks.sticky?1.15:1);
+  const drag=[0,PADDLE?.2:MUDT?.5:1.1,MUDT?.9:2.4,.6+sf.d*2.6,0,CHAINS?.5:.9][sk]+(sk===3?.025*G.v*G.v*sf.d:0);
   if(sk===3&&sf.d>INTAKE)return crash('Engine flooded','none');
   const fmax=MU*GR*Math.cos(G.thG)*(G.lR>.05||G.lP>.05?.42:1)*grip;
   let a=-GR*Math.sin(G.thG);G.spinOut=false;
   if(dir&&wheelsDown){
     const vmax=(dir>0?24:7)*(1-.3*dmgK()),sp=dir*G.v,dry=MODES[MODE].fuel&&G.fuel<=0;
     let want=dry?0:G.throttle*7.8*POWER*(G.perks.turbo?1.2:1)*(1-.5*dmgK())*clamp(1-sp/vmax,0,1);if(!dry&&!brk&&sp<1.2&&G.throttle<.1)want=Math.max(want,1.1);
-    if(want>fmax){G.spinOut=G.throttle>.5;want=fmax;}
+    const fdrive=fmax*(LOCK&&sk!==3?1.15:1);if(want>fdrive){G.spinOut=G.throttle>.5;want=fdrive;}
     a+=dir*want;
   }
   let v=G.v+a*dt;
@@ -481,9 +561,19 @@ function groundStep(dt,gas,brk){
   const rk=rockBlock();
   if(rk){G.x=x0;G.z=z0;const hit=Math.abs(G.v);
     if(hit>12)return crash('Hit a boulder','pitch');
-    if(hit>2){thump(Math.min(1,hit/8));G.shake=Math.max(G.shake,.25);hurt(hit*.012);}
+    if(hit>2){thump(Math.min(1,hit/8));G.shake=Math.max(G.shake,.25);hurt(hit*.012*(SLIDE?.4:1));}
     G.v=-G.v*.15;G.vh=G.v*Math.cos(G.thG);
     if(now()>G.blockMsgT){G.blockMsgT=now()+5;msg('Too tall to climb. '+(SHOP.eq.lift<2?'A lift kit climbs higher':'Go around'),2.5,true);}
+  }
+  // trees. saplings fold under a brush guard, everything else stops the rig
+  const tr=rk?null:treeBlock();
+  if(tr){
+    if(tr.t===4&&GUARD){G.got.add('t'+tr.key);G.v*=.8;G.vh=G.v*Math.cos(G.thG);thump(.3);msg('Flattened a sapling',1.2);}
+    else{G.x=x0;G.z=z0;const hit=Math.abs(G.v);
+      if(hit>(GUARD?16:11))return crash('Hit a '+(tr.t===5?'rock spire':'tree'),'pitch');
+      if(hit>2){thump(Math.min(1,hit/8));G.shake=Math.max(G.shake,.25);hurt(hit*.012*(GUARD?.3:1));}
+      G.v=-G.v*.15;G.vh=G.v*Math.cos(G.thG);
+      if(now()>G.blockMsgT){G.blockMsgT=now()+5;msg(tr.t===4?'Sapling in the way. A brush guard pushes through':'Go around',2.5,true);}}
   }
   G.dist+=Math.hypot(G.x-x0,G.z-z0);
 
@@ -502,8 +592,8 @@ function groundStep(dt,gas,brk){
   const gRate=clamp((f.y-G.yG)/dt,-40,16);G.yG=f.y;
   G.vy-=GR*dt;G.y+=G.vy*dt;
   // the suspension soaks up part of each rise and the wheels droop to stay on the ground, so the rig floats less over crests
-  const droop=.16+MUP*.4;
-  if(G.y<=f.y){G.y=f.y;G.vy=Math.max(G.vy,gRate>0?gRate*.72:gRate);}
+  const droop=.16+MUP*.4+(SHOCK?.12:0);
+  if(G.y<=f.y){G.y=f.y;G.vy=Math.max(G.vy,gRate>0?gRate*(SHOCK?.6:.72):gRate);}
   else if(G.y-f.y>droop){
     G.air=true;G.airT=0;G.airPitch=0;G.airRoll=0;G.twoT=0;G.whT=0;
     G.rollRate=clamp(G.gwr*.6-G.sR*Math.max(0,G.lRv),-1.2,1.2);G.pitchRate=clamp(G.gwp*.6-G.sP*Math.max(0,G.lPv),-1.5,1.5);
@@ -531,8 +621,8 @@ function airStep(dt,gas,brk){
     G.air=false;G.y=f.y;G.yG=f.y;G.vy=G.v*Math.sin(f.th);G.phiG=f.phi;G.thG=f.th;G.gwr=G.gwp=0;
     if(Math.abs(dphi)>1.05||Math.abs(dth)>1.15){G.roll=normA(G.roll);G.pitch=normA(G.pitch);
       return crash(Math.abs(dth)>Math.abs(dphi)?(dth<0?'Landed on the nose':'Landed on the tail'):'Landed on its side',Math.abs(dth)>Math.abs(dphi)?'pitch':'roll');}
-    if(vin>12.5&&G.airT>.25)return crash('Landed too hard','pitch');
-    if(vin>3.5){thump(Math.min(1,vin/10));G.shake=Math.max(G.shake,Math.min(.5,vin*.04));hurt((vin-4)*.03);}
+    if(vin>(SHOCK?16:12.5)&&G.airT>.25)return crash('Landed too hard','pitch');
+    if(vin>3.5){thump(Math.min(1,vin/10));G.shake=Math.max(G.shake,Math.min(.5,vin*.04));hurt((vin-4)*.03*(SHOCK?.5:1));}
     G.lR=G.lP=G.lRv=G.lPv=0;G.sR=G.sP=0;
     if(Math.abs(dphi)>.03){G.sR=dphi>0?-1:1;G.lR=Math.abs(dphi);G.lRv=clamp(-G.sR*G.rollRate*.4-vin*.12,-1.5,1.2);}
     if(Math.abs(dth)>.03){G.sP=dth>0?-1:1;G.lP=Math.abs(dth);G.lPv=clamp(-G.sP*G.pitchRate*.4-vin*.15,-1.5,1.2);}
@@ -564,7 +654,7 @@ function showCard(){
   $('cardS').textContent=runText();
   $('cardD').innerHTML='';
   const pk=[G.perks.turbo?'Turbo':'',G.perks.sticky?'Sticky tires':''].filter(Boolean).join(' and ');
-  const lines=[MODES[MODE].n+'  ·  Distance '+fmtD(G.dist)+(G.flips?'  ·  Flips '+G.flips:''),'Best here: '+bestText()].concat(G.coins||G.stuntCash?['Coins '+G.coins+'  ·  Stunt cash $'+G.stuntCash]:[]).concat(pk?['Perks this run: '+pk]:[]);
+  const lines=[playName()+'  ·  Distance '+fmtD(G.dist)+(G.flips?'  ·  Flips '+G.flips:''),'Best here: '+bestText()].concat(G.coins||G.stuntCash?['Coins '+G.coins+'  ·  Stunt cash $'+G.stuntCash]:[]).concat(pk?['Perks this run: '+pk]:[]);
   lines.forEach((t,i)=>{if(i)$('cardD').appendChild(document.createElement('br'));$('cardD').appendChild(document.createTextNode(t));});
   $('cFlip').style.display=G.ended?'none':'';
   const key=runKey(),ok=canPost();$('bSubmit').disabled=!ok||G.sentKey===key||!window.Scores;
@@ -583,37 +673,41 @@ function submitScore(){
   const tag=window.Scores.cleanTag($('tagIn').value);if(!tag.trim()){$('subMsg').textContent='Type a three letter tag';return;}
   try{localStorage.setItem('mobbyhill-tag',tag.trim());}catch(e){}
   const key=runKey();$('bSubmit').disabled=true;$('subMsg').textContent='Posting...';
-  window.Scores.submit({game:MODES[MODE].slug,tag,score:runScore(),duration:runMs()}).then(r=>{
+  window.Scores.submit({game:slugNow(),tag,score:runScore(),duration:runMs()}).then(r=>{
     if(r&&r.ok){G.sentKey=key;$('subMsg').textContent='Posted. Rank #'+r.rank;G.myId=r.entry&&r.entry.id;}
     else{$('bSubmit').disabled=false;$('subMsg').textContent={slow_down:'Wait ten seconds and try again',tag_rejected:'Pick a different tag',offline:'Score hub unreachable'}[r&&r.error]||'Not posted ('+((r&&r.error)||'error')+')';}
   });
 }
+const ICONS={"fuelcan": "<path d=\"M9 6h11l4 4v17H9z\"/><path d=\"M13 6V3h5v3\"/><path d=\"M12 12l9 10M21 12l-9 10\"/>", "repair": "<path d=\"M20 4a6 6 0 0 0-6 8L4 22l4 4 10-10a6 6 0 0 0 8-6l-4 4-4-4z\"/>", "turbo": "<circle cx=\"16\" cy=\"16\" r=\"11\"/><path d=\"M16 16m0-6a6 6 0 1 1-6 6a3 3 0 0 1 6 0\"/><path d=\"M27 16h3\"/>", "sticky": "<circle cx=\"14\" cy=\"16\" r=\"10\"/><circle cx=\"14\" cy=\"16\" r=\"4\"/><path d=\"M26 6c2 3 2 5 0 6c-2-1-2-3 0-6zM27 18c1.5 2 1.5 4 0 4.5c-1.5-.5-1.5-2.5 0-4.5z\"/>", "tires": "<circle cx=\"16\" cy=\"16\" r=\"12\"/><circle cx=\"16\" cy=\"16\" r=\"5\"/><path d=\"M28.0 16.0L24.5 16.0\"/><path d=\"M24.5 24.5L22.0 22.0\"/><path d=\"M16.0 28.0L16.0 24.5\"/><path d=\"M7.5 24.5L10.0 22.0\"/><path d=\"M4.0 16.0L7.5 16.0\"/><path d=\"M7.5 7.5L10.0 10.0\"/><path d=\"M16.0 4.0L16.0 7.5\"/><path d=\"M24.5 7.5L22.0 10.0\"/>", "lift": "<path d=\"M4 20h24v-5H9l-5 5z\"/><circle cx=\"10\" cy=\"25\" r=\"3\"/><circle cx=\"22\" cy=\"25\" r=\"3\"/><path d=\"M16 11V3M12.5 6.5 16 3l3.5 3.5\"/>", "lockers": "<circle cx=\"16\" cy=\"16\" r=\"5\"/><path d=\"M23.0 16.0L28.0 16.0\"/><path d=\"M21.0 20.9L24.5 24.5\"/><path d=\"M16.0 23.0L16.0 28.0\"/><path d=\"M11.1 21.0L7.5 24.5\"/><path d=\"M9.0 16.0L4.0 16.0\"/><path d=\"M11.0 11.1L7.5 7.5\"/><path d=\"M16.0 9.0L16.0 4.0\"/><path d=\"M20.9 11.0L24.5 7.5\"/><circle cx=\"16\" cy=\"16\" r=\"9\"/>", "sliders": "<path d=\"M4 14h24v-6H8z\"/><path d=\"M3 20h26M5 20v-4M27 20v-4M16 20v-4\"/><circle cx=\"9\" cy=\"26\" r=\"2.5\"/><circle cx=\"23\" cy=\"26\" r=\"2.5\"/>", "guard": "<path d=\"M6 8h20v16H6z\"/><path d=\"M11 8v16M16 8v16M21 8v16M6 14h20\"/><path d=\"M4 26h24\"/>", "snorkel": "<path d=\"M10 28V10a5 5 0 0 1 5-5h9v6\"/><path d=\"M6 28h8\"/><path d=\"M20 11h8\"/>", "chains": "<rect x=\"3\" y=\"11\" width=\"10\" height=\"6\" rx=\"3\"/><rect x=\"11\" y=\"13\" width=\"10\" height=\"6\" rx=\"3\" transform=\"rotate(0)\"/><rect x=\"19\" y=\"11\" width=\"10\" height=\"6\" rx=\"3\"/>", "shocks": "<path d=\"M16 2v5M16 25v5\"/><path d=\"M10 7h12M10 25h12\"/><path d=\"M11 9l10 3-10 3 10 3-10 3 10 3\"/>", "engine": "<path d=\"M5 12h4V9h10v3h3l3-3h3v15h-3l-3-3h-3v4H9v-4H5z\"/><path d=\"M12 9V5h4\"/>", "tank": "<path d=\"M9 6h14l3 4v18H6V10z\"/><path d=\"M14 6V3h4v3\"/><path d=\"M10 16h12M10 21h12\"/>"};
+function iconEl(k){const d=document.createElement("div");d.className="ic";d.innerHTML='<svg viewBox="0 0 32 32">'+(ICONS[k]||"")+"</svg>";return d;}
 function openGarage(){G.garageDirty=false;renderGarage();$('garage').classList.add('on');tokRefresh(renderGarage);}
 function renderGarage(){
   $('bank').textContent='$'+SHOP.bank+' cash';
   $('tokLine').textContent=tokText();
   const box=$('parts');box.replaceChildren();
   const sec=t=>{const d=document.createElement('div');d.className='sec';d.textContent=t;box.appendChild(d);};
-  sec('PERKS, PAID IN TOKENS');
+  sec('PERKS · TOKENS');
   PERKS.forEach(pk=>{
     const price=TOK.items[pk.k],d=document.createElement('div');d.className='part';
     const n=document.createElement('div');n.className='pn';
     n.textContent=pk.n+(pk.k==='fuelcan'&&INV.fuelcan?'  ·  have '+INV.fuelcan:'')+((pk.k==='turbo'&&INV.turbo)||(pk.k==='sticky'&&INV.sticky)?'  ·  ready for next run':'');
     const nd=document.createElement('div');nd.className='pd';nd.textContent=pk.d;
+    const info=document.createElement('div');info.className='pi';
     const b=document.createElement('button');b.className='opt'+(price==null||TOK.bal===null||TOK.bal<price?' lock':'');b.style.width='100%';
     const armed=(pk.k==='turbo'&&INV.turbo)||(pk.k==='sticky'&&INV.sticky),noDmg=pk.k==='repair'&&SHOP.dmg<.005;
     b.textContent=armed?'Ready':noDmg?'Nothing to fix':price==null?'Tokens offline':'Buy  '+price+' tokens';
     b.addEventListener('click',()=>{if(armed||noDmg||price==null)return;tokSpend(pk.k,()=>{
       if(pk.k==='fuelcan')INV.fuelcan++;else if(pk.k==='repair')SHOP.dmg=Math.max(0,SHOP.dmg-.5);else INV[pk.k]=true;
       saveInv();saveShop();});});
-    const row=document.createElement('div');row.className='opts';row.appendChild(b);d.append(n,nd,row);box.appendChild(d);
+    const row=document.createElement('div');row.className='opts';row.appendChild(b);info.append(n,nd,row);d.append(iconEl(pk.k),info);box.appendChild(d);
   });
-  sec('PARTS, PAID IN CASH OR TOKENS');
+  sec('PARTS · CASH OR TOKENS');
   PARTS.forEach(p=>{
     const d=document.createElement('div');d.className='part';
     const n=document.createElement('div');n.className='pn';n.textContent=p.name;
     const nd=document.createElement('div');nd.className='pd';nd.textContent=p.note;
-    const row=document.createElement('div');row.className='opts';
+    const bf=document.createElement('div');bf.className='bf';bf.textContent='Best in '+p.best;
+    const row=document.createElement('div');row.className='opts';row.style.flexWrap='wrap';
     p.opts.forEach((o,i)=>{
       const owned=SHOP.own[p.k].includes(i),eq=SHOP.eq[p.k]===i,b=document.createElement('button');
       const tk=TOK.items['part-'+p.k+'-'+i];
@@ -629,7 +723,7 @@ function renderGarage(){
       });
       row.appendChild(b);
     });
-    d.append(n,nd,row);box.appendChild(d);
+    const info=document.createElement('div');info.className='pi';info.append(n,bf,nd,row);d.append(iconEl(p.k),info);box.appendChild(d);
   });
   if(SHOP.dmg>.005){const d=document.createElement('div');d.className='part';
     const n=document.createElement('div');n.className='pn';n.textContent='Repairs';
@@ -637,19 +731,19 @@ function renderGarage(){
     const cost=Math.ceil(SHOP.dmg*400),b=document.createElement('button');b.className='opt';b.style.width='100%';
     b.textContent=SHOP.bank>=cost?'Fix it all  $'+cost:'Fix what $'+SHOP.bank+' covers';
     b.addEventListener('click',()=>{const c=Math.ceil(SHOP.dmg*400);if(SHOP.bank>=c){SHOP.bank-=c;SHOP.dmg=0;}else{SHOP.dmg=Math.max(0,SHOP.dmg-SHOP.bank/400);SHOP.bank=0;}SHOP.pull=Math.random()<.5?-1:1;saveShop();renderGarage();});
-    const row=document.createElement('div');row.className='opts';row.appendChild(b);d.append(n,nd,row);box.appendChild(d);}
+    const row=document.createElement('div');row.className='opts';row.appendChild(b);const info=document.createElement('div');info.className='pi';info.append(n,nd,row);d.append(iconEl('repair'),info);box.appendChild(d);}
   $('gStats').innerHTML='';
-  ['Tips over at '+Math.round(Math.atan2(T,CGH)/DEG)+'° side slope','Climbs rocks up to '+CLIMB.toFixed(2)+' m','Wades water up to '+INTAKE.toFixed(2)+' m'].forEach((t,i)=>{if(i)$('gStats').appendChild(document.createElement('br'));$('gStats').appendChild(document.createTextNode(t));});
+  ['Tips over at '+Math.round(Math.atan2(T,CGH)/DEG)+'° side slope','Climbs rocks up to '+CLIMB.toFixed(2)+' m','Wades water up to '+INTAKE.toFixed(2)+' m','Lands drops up to '+(SHOCK?16:12.5)+' m/s'].forEach((t,i)=>{if(i)$('gStats').appendChild(document.createElement('br'));$('gStats').appendChild(document.createTextNode(t));});
 }
-function closeGarage(){$('garage').classList.remove('on');if(G.garageDirty){G.garageDirty=false;newRun();msg('New parts on. Fresh run',2.5);}}
+function closeGarage(){$('garage').classList.remove('on');G.garageDirty=false;renderMenu();}
 function openBoard(){
   $('board').classList.add('on');const box=$('boardList');box.replaceChildren();
-  $('boardTitle').textContent='MobbyHill '+MODES[MODE].n+' top runs';
+  $('boardTitle').textContent=playName();
   $('boardLoc').textContent='Best on this phone: '+bestText();
   const empty=t=>{const d=document.createElement('div');d.className='empty';d.textContent=t;box.replaceChildren(d);};
   if(!window.Scores)return empty('Score hub unreachable');
   empty('Loading...');
-  window.Scores.board(MODES[MODE].slug,20).then(r=>{
+  window.Scores.board(slugNow(),20).then(r=>{
     if(!r||!r.ok)return empty('Score hub unreachable');if(!r.board.length)return empty('No runs posted yet');
     box.replaceChildren();
     r.board.forEach(e=>{const row=document.createElement('div');row.className='br'+(e.id===G.myId?' me':'');
@@ -744,7 +838,8 @@ function makeGrid(N){const n=(2*N+1)*(2*N+1);return{N,cam:new Float32Array(n*3),
 const GN=makeGrid(28),GF=makeGrid(26);
 function makeSurf(g){const n=(2*g.N+1)*(2*g.N+1);g.sk=new Uint8Array(n);g.wy=new Float32Array(n);}
 makeSurf(GN);makeSurf(GF);
-// paths: 0 to 3 distance bands, 4 sand, 5 mud, 6 water
+// paths: 0 to 3 distance bands, 4 sand, 5 mud, 6 water, 7 snow. slickrock, and sand in the dunes, use the distance bands
+let SPATH=[-1,4,5,6,-1,7];
 function drawGrid(g,step,ox,oz,rock,inner,paths,bandFn){
   const N=g.N,sx=Math.round(ox/step)*step,sz=Math.round(oz/step)*step,S=2*N+1,cam=g.cam,R=CAM.R,U=CAM.U,F=CAM.F;
   for(let j=0;j<S;j++)for(let i=0;i<S;i++){
@@ -763,12 +858,12 @@ function drawGrid(g,step,ox,oz,rock,inner,paths,bandFn){
       const mx=(g.wx[a]+g.wx[b])/2,mz=(g.wz[a]+g.wz[b])/2,r2=mx*mx+mz*mz;
       if(inner&&r2<in2)continue;
       const ka=a*3,kb=b*3,sa=g.sk[a],sb=g.sk[b];
-      const pi=sa&&sa===sb?3+sa:bandFn(r2);
+      const pi=sa===sb&&SPATH[sa]>=0?SPATH[sa]:bandFn(r2);
       segC(paths[pi],cam[ka],cam[ka+1],cam[ka+2],cam[kb],cam[kb+1],cam[kb+2]);
     }
     // texture marks inside each cell: sand gets one slash, mud gets a cross, water gets a moving wave
     if(!rock||i===S-1||j===S-1)continue;
-    const sk=g.sk[a];if(!sk||g.sk[a+1]!==sk||g.sk[a+S]!==sk||g.sk[a+S+1]!==sk)continue;
+    const sk=g.sk[a];if(!sk||sk>3||SPATH[sk]<0||g.sk[a+1]!==sk||g.sk[a+S]!==sk||g.sk[a+S+1]!==sk)continue;
     const mx=g.wx[a]+step/2,mz=g.wz[a]+step/2;if(mx*mx+mz*mz>3600)continue;
     const ka=a*3,kc=(a+S+1)*3;
     if(sk===1)segC(paths[4],cam[ka],cam[ka+1],cam[ka+2],cam[kc],cam[kc+1],cam[kc+2]);
@@ -897,7 +992,7 @@ function drawFlags(pa,pb){
 }
 
 function drawGhost(path){
-  if(!OPT.ghost||G.runT0===null)return;const gh=ghostFor(MODE);if(!gh||!gh.s||gh.s.length<12)return;
+  if(!OPT.ghost||G.runT0===null)return;const gh=ghostFor(comboKey());if(!gh||!gh.s||gh.s.length<12)return;
   const n=gh.s.length/6,f=Math.min(n-1,G.runT/GDT),i=Math.floor(f),u=f-i,j=Math.min(n-1,i+1),s=gh.s;
   const L=k=>s[i*6+k]+(s[j*6+k]-s[i*6+k])*u,LA=k=>s[i*6+k]+normA(s[j*6+k]-s[i*6+k])*u;
   const P={O:[L(0),L(1),L(2)],B:basis(LA(3),LA(4),LA(5))};
@@ -918,8 +1013,27 @@ function drawDecor(pg,pb,cx,cz,rad){
       segW(pb,[X,Y,Z],top);
       for(let k=0;k<3;k++){const a=d.a+k*2.1,e=[X+Math.cos(a)*h*.38,Y+h,Z+Math.sin(a)*h*.38],m=[(top[0]+e[0])/2,(top[1]+e[1])/2,(top[2]+e[2])/2];
         segW(pb,top,e);segW(pb,m,[m[0]+Math.cos(a+1.2)*h*.2,m[1]+h*.18,m[2]+Math.sin(a+1.2)*h*.2]);}
+    }else if(d.t===3||d.t===4){if(G.got.has('t'+d.key)){segW(pg,[X,Y+.1,Z],[X+c*h*.8,Y+.1,Z+s*h*.8]);continue;}
+      // pine: a trunk and stacked cones, four spokes and a ring on each tier
+      const tiers=d.t===3?3:1,top=[X,Y+h,Z];segW(pb,[X,Y,Z],[X,Y+h*.35,Z]);
+      for(let q=0;q<tiers;q++){const by=Y+h*(.3+q*.22),rr=(d.t===3?1.9:.8)*(1-q*.25),ap=q===tiers-1?top:[X,by+h*.38,Z],ring=[];
+        for(let m=0;m<4;m++){const a=d.a+m*1.571;ring.push([X+Math.cos(a)*rr,by,Z+Math.sin(a)*rr]);}
+        for(let m=0;m<4;m++){segW(pg,ap,ring[m]);segW(pg,ring[m],ring[(m+1)%4]);}}
+    }else if(d.t===5){ // rock spire: a stack of narrowing blocks
+      let y0=Y,w=1;for(let q=0;q<3;q++){const y1=y0+h/3,w1=w*(q===2?.75:.82),cs=[];
+        for(let m=0;m<4;m++){const a=d.a+m*1.571+.785;cs.push([X+Math.cos(a)*w,y0,Z+Math.sin(a)*w,X+Math.cos(a)*w1,y1,Z+Math.sin(a)*w1]);}
+        for(let m=0;m<4;m++){const A0=cs[m],B0=cs[(m+1)%4];segW(pb,[A0[0],A0[1],A0[2]],[A0[3],A0[4],A0[5]]);segW(pb,[A0[3],A0[4],A0[5]],[B0[3],B0[4],B0[5]]);}
+        y0=y1;w=w1*(q===1?1.25:1);}
     }else{for(let k=0;k<6;k++){const a=d.a+k*1.05;segW(pg,[X,Y,Z],[X+Math.cos(a)*.75,Y+.45+.3*(k%2),Z+Math.sin(a)*.75]);}}
   }
+}
+function drawLogs(p,cx,cz,rad){
+  if(LAND!=='forest')return;
+  const c0=Math.floor((cx-rad)/LC),c1=Math.floor((cx+rad)/LC),d0=Math.floor((cz-rad)/LC),d1=Math.floor((cz+rad)/LC);
+  for(let ci=c0;ci<=c1;ci++)for(let cj=d0;cj<=d1;cj++){const l=logCell(ci,cj);if(!l||Math.hypot(l.x-cx,l.z-cz)>rad)continue;
+    const ux=Math.cos(l.a),uz=Math.sin(l.a),ex=[l.x-ux*l.L,l.z-uz*l.L],fx=[l.x+ux*l.L,l.z+uz*l.L],ya=baseH(ex[0],ex[1]),yb=baseH(fx[0],fx[1]);
+    for(const off of[-1,0,1]){const ox=-uz*off*l.rad,oz=ux*off*l.rad,oy=off?l.rad:2*l.rad;segW(p,[ex[0]+ox,ya+oy,ex[1]+oz],[fx[0]+ox,yb+oy,fx[1]+oz]);}
+    for(const e of[[ex,ya],[fx,yb]]){let prev=null;for(let m=0;m<=6;m++){const a=m/6*6.283,q=[e[0][0]-uz*Math.cos(a)*l.rad,e[1]+l.rad+Math.sin(a)*l.rad,e[0][1]+ux*Math.cos(a)*l.rad];if(prev)segW(p,prev,q);prev=q;}}}
 }
 function drawCoins(p,cx,cz,rad){
   const c0=Math.floor((cx-rad)/CC),c1=Math.floor((cx+rad)/CC),d0=Math.floor((cz-rad)/CC),d1=Math.floor((cz+rad)/CC),t=now()*3;
@@ -977,7 +1091,7 @@ function drawFx(pt,pd,pm){
 function drawRidges(p){
   // far ring of wireframe peaks that rides along with the camera
   let prev=null;
-  for(let k=0;k<=96;k++){const a=k/96*Math.PI*2,x=CAM.x+Math.sin(a)*1900,z=CAM.z+Math.cos(a)*1900,y=90+130*vn(a*2.6,3,9)+60*vn(a*7,1,10);
+  let LD;for(let k=0;k<=96;k++){const a=k/96*Math.PI*2,x=CAM.x+Math.sin(a)*1900,z=CAM.z+Math.cos(a)*1900;LD=LANDS[LAND];let y=90+LD.ra*vn(a*2.6,3,9)+LD.rb*vn(a*7,1,10);if(LD.rq)y=Math.round(y/LD.rq)*LD.rq;
     const q=[x,y,z];if(prev)segW(p,prev,q);
     if(k%3===0)segW(p,q,[x,y-140,z]);prev=q;}
 }
@@ -1010,7 +1124,7 @@ function setCam(P,dt){
 function render(dt){
   const P=bodyPose();setCam(P,dt);
   ctx.setTransform(dpr,0,0,dpr,0,0);
-  const sky=ctx.createLinearGradient(0,0,0,H);sky.addColorStop(0,'#dde6eb');sky.addColorStop(.55,'#f2efe6');sky.addColorStop(1,'#ece7da');
+  const SK=LANDS[LAND].sky,sky=ctx.createLinearGradient(0,0,0,H);sky.addColorStop(0,SK[0]);sky.addColorStop(.55,SK[1]);sky.addColorStop(1,SK[2]);
   ctx.fillStyle=sky;ctx.fillRect(0,0,W,H);
   ctx.lineCap='round';
   const top=G.alive&&G.cam==='top';
@@ -1018,14 +1132,16 @@ function render(dt){
     const ps=new Path2D(),pc=new Path2D(),pbd=new Path2D();drawSky(ps,pc,pbd);
     ctx.strokeStyle='rgba(210,150,40,.7)';ctx.lineWidth=1.3;ctx.stroke(ps);ctx.strokeStyle='rgba(130,150,165,.5)';ctx.lineWidth=1.1;ctx.stroke(pc);
     ctx.strokeStyle='rgba(46,51,56,.8)';ctx.lineWidth=1.4;ctx.stroke(pbd);}
-  const bands=[new Path2D(),new Path2D(),new Path2D(),new Path2D(),new Path2D(),new Path2D(),new Path2D()];
+  const bands=[new Path2D(),new Path2D(),new Path2D(),new Path2D(),new Path2D(),new Path2D(),new Path2D(),new Path2D()];
+  const GC=LANDS[LAND].grid;
   const cx0=top?P.O[0]:CAM.x,cz0=top?P.O[2]:CAM.z;
   drawGrid(GF,12,cx0,cz0,false,80,bands,r2=>3);
   drawGrid(GN,3,cx0,cz0,true,0,bands,r2=>r2<900?0:r2<2700?1:2);
-  ctx.strokeStyle='rgba(150,160,168,.55)';ctx.lineWidth=1;ctx.stroke(bands[3]);
-  ctx.strokeStyle='rgba(96,108,120,.55)';ctx.lineWidth=1;ctx.stroke(bands[2]);
-  ctx.strokeStyle='rgba(78,90,102,.75)';ctx.lineWidth=1.1;ctx.stroke(bands[1]);
-  ctx.strokeStyle='rgba(58,68,80,.9)';ctx.lineWidth=1.3;ctx.stroke(bands[0]);
+  ctx.strokeStyle='rgba('+GC+',.3)';ctx.lineWidth=1;ctx.stroke(bands[3]);
+  ctx.strokeStyle='rgba('+GC+',.5)';ctx.lineWidth=1;ctx.stroke(bands[2]);
+  ctx.strokeStyle='rgba('+GC+',.72)';ctx.lineWidth=1.1;ctx.stroke(bands[1]);
+  ctx.strokeStyle='rgba('+GC+',.92)';ctx.lineWidth=1.3;ctx.stroke(bands[0]);
+  ctx.strokeStyle='rgba(125,155,184,.85)';ctx.lineWidth=1.3;ctx.stroke(bands[7]);
   ctx.strokeStyle='rgba(196,152,64,.95)';ctx.lineWidth=1.2;ctx.stroke(bands[4]);
   ctx.strokeStyle='rgba(112,72,38,.95)';ctx.lineWidth=1.3;ctx.stroke(bands[5]);
   // splash rings where the rig hit water
@@ -1033,7 +1149,7 @@ function render(dt){
     for(let q=0;q<=16;q++){const a=q/16*6.283,p=[sp.x+Math.cos(a)*r,y,sp.z+Math.sin(a)*r];if(prev)segW(bands[6],prev,p);prev=p;}}
   if(G.depth>0&&G.alive){const y=waterY(G.x,G.z)+.03;let prev=null;for(let q=0;q<=20;q++){const a=q/20*6.283,r=2.6+Math.sin(tn*4+q)*.15,p=[G.x+Math.cos(a)*r*.8,y,G.z+Math.sin(a)*r];if(prev)segW(bands[6],prev,p);prev=p;}}
   ctx.strokeStyle='rgba(42,98,176,.9)';ctx.lineWidth=1.4;ctx.stroke(bands[6]);
-  const rp=new Path2D(),dg=new Path2D();drawRocks(rp,cx0,cz0,85);drawDecor(dg,rp,cx0,cz0,105);ctx.strokeStyle='rgba(122,92,60,.9)';ctx.lineWidth=1.3;ctx.stroke(rp);
+  const rp=new Path2D(),dg=new Path2D();drawRocks(rp,cx0,cz0,85);drawDecor(dg,rp,cx0,cz0,LAND==='forest'?70:105);drawLogs(rp,cx0,cz0,70);ctx.strokeStyle='rgba(122,92,60,.9)';ctx.lineWidth=1.3;ctx.stroke(rp);
   ctx.strokeStyle='rgba(63,138,63,.9)';ctx.lineWidth=1.4;ctx.stroke(dg);
   const pt=new Path2D(),pd=new Path2D(),pm=new Path2D();drawFx(pt,pd,pm);
   ctx.strokeStyle='rgba(90,80,70,.3)';ctx.lineWidth=2;ctx.stroke(pt);ctx.strokeStyle='rgba(176,140,84,.8)';ctx.lineWidth=1.6;ctx.stroke(pd);ctx.strokeStyle='rgba(112,72,38,.9)';ctx.stroke(pm);
@@ -1194,7 +1310,7 @@ function setupInput(){
   $('bNew').addEventListener('click',openMenu);
   $('bEnd').addEventListener('click',()=>{if(G.ended)return;endRun();});
   $('bBoard').addEventListener('click',openBoard);
-  $('bGarage').addEventListener('click',openGarage);
+
   $('bCan').addEventListener('click',()=>{if(!MODES[MODE].fuel||!INV.fuelcan||!G.alive||G.ended)return;if(G.fuel>.95){msg('Tank is full',1.5);return;}
     INV.fuelcan--;saveInv();G.fuel=Math.min(1,G.fuel+.5);G.outT=0;msg('Fuel can used. '+INV.fuelcan+' left',2);});$('garageClose').addEventListener('click',closeGarage);$('cBoard').addEventListener('click',openBoard);
   $('boardClose').addEventListener('click',()=>$('board').classList.remove('on'));
@@ -1239,23 +1355,31 @@ function frame(){
   render(dt);hud(dt);engineTick();warnBeep();
   requestAnimationFrame(frame);
 }
-function setMode(m){MODE=m;CLIMBT=MODES[m].climb;G.best=BESTS[m];ROCKS.clear();DECOR.clear();COINS.clear();saveOpts();renderMenu();}
+function setPlay(m,land){MODE=m;LAND=land||LAND;CLIMBT=MODES[m].climb;SC=LAND==='forest'?11:26;SPATH=LAND==='dunes'?[-1,-1,5,6,-1,7]:[-1,4,5,6,-1,7];G.best=bestFor(comboKey());
+  ROCKS.clear();DECOR.clear();COINS.clear();LOGS.clear();saveOpts();renderMenu();}
+function setMode(m){setPlay(m,LAND);}
 function renderMenu(){
-  const box=$('modes');box.replaceChildren();
-  for(const m in MODES){const b=document.createElement('button');b.textContent=MODES[m].n;b.className=m===MODE?'on':'';b.addEventListener('click',()=>setMode(m));box.appendChild(b);}
-  $('modeNote').textContent=MODES[MODE].note;
+  const lb=$('lands');lb.replaceChildren();
+  for(const l in LANDS){const b=document.createElement('button');b.textContent=LANDS[l].n;b.className=l===LAND?'on':'';b.addEventListener('click',()=>setPlay(MODE,l));lb.appendChild(b);}
+  const box=$('modes');box.replaceChildren();const fuel=MODES[MODE].fuel;
+  for(const base of['trail','climb']){const b=document.createElement('button');b.textContent=MODES[base].n;b.className=CLIMBT===(base==='climb')?'on':'';
+    b.addEventListener('click',()=>setPlay(base==='climb'?(fuel?'climbfuel':'climb'):(fuel?'fuel':'trail')));box.appendChild(b);}
+  $('modeNote').textContent=LANDS[LAND].note+' '+MODES[MODE].note;
+  $('tFuel').textContent='Fuel challenge '+(fuel?'on':'off');$('tFuel').classList.toggle('on',fuel);
   $('tGhost').textContent='Ghost '+(OPT.ghost?'on':'off');$('tGhost').classList.toggle('on',OPT.ghost);
   $('tDmg').textContent='Damage '+(OPT.damage?'on':'off');$('tDmg').classList.toggle('on',OPT.damage);
-  $('sBest').textContent='Best '+MODES[MODE].n+': '+bestText()+(OPT.damage&&SHOP.dmg>.005?'  ·  Damage '+Math.round(SHOP.dmg*100)+'%':'');
+  $('sBest').textContent='Best '+playName()+': '+bestText()+(OPT.damage&&SHOP.dmg>.005?'  ·  Damage '+Math.round(SHOP.dmg*100)+'%':'');
   $('sTok').textContent=tokText();
   $('sTilt').textContent=G.tiltOn?'Start':'Start with tilt';$('sPlain').style.display=G.tiltOn?'none':'';
 }
 function openMenu(){G.started=false;renderMenu();$('start').classList.remove('hide');tokRefresh(renderMenu);}
 $('tGhost').addEventListener('click',()=>{OPT.ghost=!OPT.ghost;saveOpts();renderMenu();});
+$('tFuel').addEventListener('click',()=>{const f=!MODES[MODE].fuel;setPlay(CLIMBT?(f?'climbfuel':'climb'):(f?'fuel':'trail'));});
+$('sStore').addEventListener('click',openGarage);
 $('tDmg').addEventListener('click',()=>{OPT.damage=!OPT.damage;saveOpts();renderMenu();});
 function begin(tilt){$('start').classList.add('hide');G.started=true;ac();startEngine();if(tilt&&!G.tiltOn)enableTilt();resetRig(true);msg('Shift to D and hold Gas',3);}
 $('sTilt').addEventListener('click',()=>begin(true));$('sPlain').addEventListener('click',()=>begin(false));
-renderMenu();tokRefresh(renderMenu);
+setPlay(MODE,LAND);tokRefresh(renderMenu);
 setupInput();resetRig(true);requestAnimationFrame(frame);
 </script>
 </body>
