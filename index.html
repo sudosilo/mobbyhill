@@ -8,7 +8,7 @@
 <meta name="theme-color" content="#e9e6dc">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%23eceae3'/%3E%3Cpath d='M2 24 L10 12 L16 18 L22 8 L30 24 Z' fill='none' stroke='%23d2601a' stroke-width='2.4'/%3E%3C/svg%3E">
 <!--
-MobbyHill v11. v1 written in chat with Claude Opus 5.5, Nov 14 2026.
+MobbyHill v12. v1 written in chat with Claude Opus 5.5, Nov 14 2026.
 Wireframe 4x4 on wireframe terrain. Driver seat camera with hood, dash and steering wheel, chase camera, top camera.
 Controls carried over from the dock yard truck game: drag steering wheel, D N R gears, Brake and Gas pedals.
 Phone tilt shifts the driver's weight left or right. The center of gravity moves with the driver,
@@ -24,6 +24,7 @@ v8 adds four landscapes (Mob the mountain, forest, canyon, dunes), each with its
 v9 adds three vehicles (side by side, Jeep, pickup) and Search and rescue: tow a trailer with two teammates following your track, find six hikers by their smoke, load three at a time and bring them back to base. The menu goes vehicle, map, challenge.
 v10 adds a fourth rig, a boxy 90s SUV in purple nicknamed the eggplant, and Off road recovery: yank stuck wrecks with a kinetic rope, winch flipped ones upright, and haul burned ones on a flatbed that only the pickup can pull. The pickup gets a wrecker boom and wheel lift. The Store adds a heavy rope and a fast winch.
 v11 adds tow sounds: hook and unhook clanks, rope twang and snap, wheel lift hiss and a winch whine.
+v12 adds weather: rain (slick dirt and slickrock, higher creeks, muddier ground), fog and dust storms (short view, dust gusts push the rig sideways), and snow (bare dirt turns to snow). The menu picks one or rolls a random one that suits the landscape.
 -->
 <style>
 :root{
@@ -223,6 +224,7 @@ input{user-select:text;-webkit-user-select:text}
     <div class="lbl">3. Challenge</div>
     <div class="modes" id="modes"></div>
     <p class="mnote" id="modeNote"></p>
+    <div class="row"><button class="tog" id="tWx">Weather</button></div>
     <div class="row"><button class="tog" id="tFuel">Fuel challenge</button><button class="tog" id="tGhost">Ghost</button><button class="tog" id="tDmg">Damage</button></div>
     <div class="row"><button class="store" id="sStore">Store</button></div>
     <div class="row"><button class="go" id="sTilt">Start with tilt</button><button id="sPlain">Start</button></div>
@@ -275,7 +277,7 @@ const LANDS={
 let MODE='trail',LAND='mountain',CLIMBT=false,OPT={ghost:true,damage:false};
 try{const o=JSON.parse(localStorage.getItem('mobbyhill-opts')||'null');if(o){if(MODES[o.mode])MODE=o.mode;if(LANDS[o.land])LAND=o.land;if(typeof o.ghost==='boolean')OPT.ghost=o.ghost;if(typeof o.damage==='boolean')OPT.damage=o.damage;}}catch(e){}
 CLIMBT=MODES[MODE].climb;
-function saveOpts(){try{localStorage.setItem('mobbyhill-opts',JSON.stringify({mode:MODE,land:LAND,veh:VK,ghost:OPT.ghost,damage:OPT.damage}));}catch(e){}}
+function saveOpts(){try{localStorage.setItem('mobbyhill-opts',JSON.stringify({mode:MODE,land:LAND,veh:VK,wx:WXPICK,ghost:OPT.ghost,damage:OPT.damage}));}catch(e){}}
 // mountain keeps the original keys so earlier bests, ghosts and leaderboards carry over
 function comboKey(){return LAND==='mountain'?MODE:MODE+'-'+LAND;}
 function slugNow(){return MODES[MODE].slug+(LAND==='mountain'?'':'-'+LAND);}
@@ -364,6 +366,21 @@ function baseH(x,z){if(CLIMBT)return climbH(x,z);const r=Math.hypot(x,z),k=Math.
   if(LAND==='canyon')return terrace((34*vn(x/220,z/220,61)+14*vn(x/80,z/80,62)*k+3*vn(x/25,z/25,63)*k)*ff,1.6)+.25*vn(x/9,z/9,64)*ff;
   if(LAND==='dunes')return(20*ridge(vn(x/130,z/170,51))+7*ridge(vn(x/55,z/70,52))*k+4*vn(x/200,z/200,53))*ff;
   return(26*vn(x/180,z/180,1)+11*vn(x/66,z/66,2)*k+3.4*vn(x/24,z/24,3)*k+.9*vn(x/8.5,z/8.5,4)*Math.min(1,k))*ff;}
+// weather. the menu picks one or rolls a random one that suits the landscape at the start of each run
+const WXS={clear:{n:'Clear',note:''},rain:{n:'Rain',note:'Rain. Dirt and slickrock are slick and the creeks are up.',sky:['#c6ced5','#dde1e2','#d6dad7']},
+  fog:{n:'Fog',note:'Fog. You can only see about 60 m. Follow the smoke and beacons.',sky:['#e4e7e7','#eceeed','#e7e9e8']},
+  dust:{n:'Dust storm',note:'Dust storm. Gusts push the rig sideways and the view is short.',sky:['#e6d2ab','#eddcbd','#e6d3ae']},
+  snow:{n:'Snow',note:'Snow. Bare dirt is snow covered. Tire chains help.',sky:['#d6dee5','#ecf0f3','#e4e9ed']}};
+const WXFIT={mountain:['clear','rain','fog','snow'],forest:['clear','rain','fog','snow'],canyon:['clear','rain','dust'],dunes:['clear','dust']};
+let WXPICK='clear',WX='clear';const WXR=.28;
+try{const o=JSON.parse(localStorage.getItem('mobbyhill-opts')||'null');if(o&&(o.wx==='random'||WXS[o.wx]))WXPICK=o.wx;}catch(e){}
+function rollWeather(){WX=WXPICK==='random'?WXFIT[LAND][Math.floor(Math.random()*WXFIT[LAND].length)]:WXPICK;G.gust=0;G.gustT=0;G.gustTo=0;}
+// the ground under the wheels once weather is applied. rain raises the creeks and muddies wet dirt, snow covers bare dirt
+function surfNow(x,z){const sf=surfAt(x,z);
+  if(WX==='rain'&&hasWater()&&Math.hypot(x,z)>=DRYR){if(sf.k===3)return{k:3,d:sf.d+WXR};const m=wetM(x,z),c=carve(m);if(c>.001)return{k:3,d:c-.12+WXR};if(sf.k===0&&m>.22)return{k:2,d:0};}
+  if(WX==='snow'&&sf.k===0&&(LAND==='mountain'||LAND==='forest')&&Math.hypot(x,z)>=DRYR)return{k:5,d:0};
+  return sf;}
+function waterNow(x,z){return waterY(x,z)+(WX==='rain'?WXR:0);}
 function hasWater(){return!CLIMBT&&(LAND==='mountain'||LAND==='forest');}
 function snowLine(){return CLIMBT?180:22;}
 // wet ground: one noise field makes ponds and fords, with a ring of mud around them. another makes soft sand washes
@@ -445,7 +462,7 @@ const G={alive:true,gear:'N',gas:false,brake:false,throttle:0,wheelDeg:0,wheelHe
   cam:'driver',look:0,snd:true,started:false,
   x:0,z:0,y:0,vy:0,yaw:0,v:0,vh:0,roll:0,pitch:0,rollRate:0,pitchRate:0,yawRate:0,air:false,
   lR:0,lRv:0,sR:0,lP:0,lPv:0,sP:0,phiG:0,thG:0,yG:0,gwr:0,gwp:0,latF:0,aLong:0,
-  perks:{turbo:false,sticky:false},tow:null,winching:false,winchP:0,load:0,loadT:0,s:0,coins:0,stuntCash:0,got:new Set(),twoT:0,whT:0,whS:0,airPitch:0,airRoll:0,stuntUntil:0,dist:0,flags:0,next:0,flips:0,fuel:1,outT:0,alt:0,maxAlt:0,altT:0,rec:[],recT:0,endWhy:'',runT0:null,runT:0,flagT:0,splits:[],ended:false,sentKey:'',spin:0,susp:[0,0,0,0],slide:false,spinOut:false,airT:0,
+  perks:{turbo:false,sticky:false},gust:0,gustT:0,gustTo:0,tow:null,winching:false,winchP:0,load:0,loadT:0,s:0,coins:0,stuntCash:0,got:new Set(),twoT:0,whT:0,whS:0,airPitch:0,airRoll:0,stuntUntil:0,dist:0,flags:0,next:0,flips:0,fuel:1,outT:0,alt:0,maxAlt:0,altT:0,rec:[],recT:0,endWhy:'',runT0:null,runT:0,flagT:0,splits:[],ended:false,sentKey:'',spin:0,susp:[0,0,0,0],slide:false,spinOut:false,airT:0,
   msgUntil:0,shake:0,crashT:0,crashWhy:'',warnT:0,wreck:null,camP:null,orbit:0,best:{dist:0,flags:0}};
 // best run on this phone for each mode: flags then time, or highest point for the climb modes. splits are kept to compare against
 const BESTS={};
@@ -716,10 +733,10 @@ function groundStep(dt,gas,brk){
   const wheelsDown=!(G.lP>.12&&G.lR>.12);
   // tire grip caps both drive and braking. fewer wheels on the ground means less grip
   // ground type changes grip and drag. mud tires help on all of it
-  const sf=surfAt(G.x,G.z),sk=sf.k;
+  const sf=surfNow(G.x,G.z),sk=sf.k;
   if(sk!==G.surf){G.surf=sk;if(sk)msg(sk===3?'Water crossing '+sf.d.toFixed(1)+' m deep':SURF[sk],1.8);if(sk===3&&Math.abs(G.v)>3)splash(Math.abs(G.v));}
   G.depth=sf.d;
-  const grip=[1,PADDLE?.98:MUDT?.92:.8,MUDT?.85:PADDLE?.6:.55,MUDT?.85:.68,1.12,CHAINS?.95:MUDT?.62:.5][sk]*(G.perks.sticky?1.15:1);
+  const grip=[1,PADDLE?.98:MUDT?.92:.8,MUDT?.85:PADDLE?.6:.55,MUDT?.85:.68,1.12,CHAINS?.95:MUDT?.62:.5][sk]*(G.perks.sticky?1.15:1)*(WX==='rain'?[.82,1.05,1,1,.8,1][sk]:1);
   const drag=[0,PADDLE?.2:MUDT?.5:1.1,MUDT?.9:2.4,.6+sf.d*2.6,0,CHAINS?.5:.9][sk]+(sk===3?.025*G.v*G.v*sf.d:0);
   if(sk===3&&sf.d>INTAKE)return crash('Engine flooded','none');
   const fmax=MU*GR*Math.cos(G.thG)*(G.lR>.05||G.lP>.05?.42:1)*grip;
@@ -741,7 +758,7 @@ function groundStep(dt,gas,brk){
   const latMax=MU*GR*Math.cos(G.phiG)*grip;G.slide=false;
   if(Math.abs(G.v*w)>latMax){w=Math.sign(w)*latMax/Math.max(.1,Math.abs(G.v));G.slide=Math.abs(G.v)>4;}
   if(G.lR>.03||G.lP>.06)w*=.6;
-  G.yawRate=w;G.yaw+=w*dt;G.latF=-G.v*w;
+  G.yawRate=w;G.yaw+=w*dt;G.latF=-G.v*w+(G.gust||0);
 
   G.vh=G.v*Math.cos(G.thG);
   const x0=G.x,z0=G.z;
@@ -803,7 +820,7 @@ function airStep(dt,gas,brk){
   G.susp=[-.12,-.12,-.12,-.12];
   const h=sampleGround(),f=fit(h);
   if(G.y<=f.y){
-    const sw=surfAt(G.x,G.z);if(sw.k===3)splash(-G.vy+Math.abs(G.vh)*.3);
+    const sw=surfNow(G.x,G.z);if(sw.k===3)splash(-G.vy+Math.abs(G.vh)*.3);
     const vin=-(G.vy*Math.cos(f.th)-G.vh*Math.sin(f.th));
     G.v=G.vh*Math.cos(f.th)+G.vy*Math.sin(f.th);
     const dphi=normA(G.roll-f.phi),dth=normA(G.pitch-f.th);
@@ -954,6 +971,9 @@ function step(dt){
   let tgt=G.leanBtn+(K.leanR?1:0)-(K.leanL?1:0);
   if(!tgt&&G.tiltOn&&G.tiltHave)tgt=clamp((G.tiltRaw-G.tiltZero)/25,-1,1);
   G.lean+=(clamp(tgt,-1,1)-G.lean)*Math.min(1,dt*8);
+  // dust storm gusts push sideways, which adds to the turning push on the tip gauges
+  if(WX==='dust'){G.gustT-=dt;if(G.gustT<=0){G.gustT=1.5+Math.random()*3;G.gustTo=(Math.random()*2-1)*2.6;}G.gust+=(G.gustTo-G.gust)*Math.min(1,dt*1.5);
+    if(G.air){G.rollRate+=G.gust*.08*dt;}}else G.gust=0;
   let tfb=G.leanBtnFB+(K.leanF?1:0)-(K.leanB?1:0);
   if(!tfb&&G.tiltOn&&G.tiltHave){const dz=G.tiltFB-G.tiltFBZero;tfb=Math.abs(dz)<3?0:clamp((dz-Math.sign(dz)*3)/18,-1,1);}
   G.leanFB+=(clamp(tfb,-1,1)-G.leanFB)*Math.min(1,dt*8);
@@ -1035,7 +1055,7 @@ function drawGrid(g,step,ox,oz,rock,inner,paths,bandFn){
   const N=g.N,sx=Math.round(ox/step)*step,sz=Math.round(oz/step)*step,S=2*N+1,cam=g.cam,R=CAM.R,U=CAM.U,F=CAM.F;
   for(let j=0;j<S;j++)for(let i=0;i<S;i++){
     const x=sx+(i-N)*step,z=sz+(j-N)*step,n=j*S+i,k=n*3;let y,sk=0;
-    if(rock){const sf=surfAt(x,z);sk=sf.k;y=sk===3?waterY(x,z):heightAt(x,z);}else y=baseH(x,z);
+    if(rock){const sf=surfNow(x,z);sk=sf.k;y=sk===3?waterNow(x,z):heightAt(x,z);}else y=baseH(x,z);
     const dx=x-CAM.x,dy=y-CAM.y,dz=z-CAM.z;
     cam[k]=dx*R[0]+dy*R[1]+dz*R[2];cam[k+1]=dx*U[0]+dy*U[1]+dz*U[2];cam[k+2]=dx*F[0]+dy*F[1]+dz*F[2];
     g.wx[n]=x-ox;g.wz[n]=z-oz;g.wy[n]=y;g.sk[n]=sk;
@@ -1414,32 +1434,32 @@ function setCam(P,dt){
 function render(dt){
   const P=bodyPose();setCam(P,dt);
   ctx.setTransform(dpr,0,0,dpr,0,0);
-  const SK=LANDS[LAND].sky,sky=ctx.createLinearGradient(0,0,0,H);sky.addColorStop(0,SK[0]);sky.addColorStop(.55,SK[1]);sky.addColorStop(1,SK[2]);
+  const SK=WXS[WX].sky||LANDS[LAND].sky,sky=ctx.createLinearGradient(0,0,0,H);sky.addColorStop(0,SK[0]);sky.addColorStop(.55,SK[1]);sky.addColorStop(1,SK[2]);
   ctx.fillStyle=sky;ctx.fillRect(0,0,W,H);
   ctx.lineCap='round';
-  const top=G.alive&&G.cam==='top';
-  if(!top){const pr=new Path2D();drawRidges(pr);ctx.strokeStyle='rgba(120,140,155,.45)';ctx.lineWidth=1;ctx.stroke(pr);
+  const top=G.alive&&G.cam==='top',thick=WX==='fog'||WX==='dust';
+  if(!top&&!thick){const pr=new Path2D();drawRidges(pr);ctx.strokeStyle='rgba(120,140,155,.45)';ctx.lineWidth=1;ctx.stroke(pr);
     const ps=new Path2D(),pc=new Path2D(),pbd=new Path2D();drawSky(ps,pc,pbd);
     ctx.strokeStyle='rgba(210,150,40,.7)';ctx.lineWidth=1.3;ctx.stroke(ps);ctx.strokeStyle='rgba(130,150,165,.5)';ctx.lineWidth=1.1;ctx.stroke(pc);
     ctx.strokeStyle='rgba(46,51,56,.8)';ctx.lineWidth=1.4;ctx.stroke(pbd);}
-  const bands=[new Path2D(),new Path2D(),new Path2D(),new Path2D(),new Path2D(),new Path2D(),new Path2D(),new Path2D()];
+  const bands=[new Path2D(),new Path2D(),new Path2D(),new Path2D(),new Path2D(),new Path2D(),new Path2D(),new Path2D(),new Path2D()];
   const GC=LANDS[LAND].grid;
   const cx0=top?P.O[0]:CAM.x,cz0=top?P.O[2]:CAM.z;
-  drawGrid(GF,12,cx0,cz0,false,80,bands,r2=>3);
-  drawGrid(GN,3,cx0,cz0,true,0,bands,r2=>r2<900?0:r2<2700?1:2);
+  if(!thick)drawGrid(GF,12,cx0,cz0,false,80,bands,r2=>3);
+  drawGrid(GN,3,cx0,cz0,true,0,bands,thick?(r2=>r2<900?0:r2<2700?1:r2<4900?2:8):(r2=>r2<900?0:r2<2700?1:2));
   ctx.strokeStyle='rgba('+GC+',.3)';ctx.lineWidth=1;ctx.stroke(bands[3]);
-  ctx.strokeStyle='rgba('+GC+',.5)';ctx.lineWidth=1;ctx.stroke(bands[2]);
+  ctx.strokeStyle='rgba('+GC+','+(thick?.18:.5)+')';ctx.lineWidth=1;ctx.stroke(bands[2]);
   ctx.strokeStyle='rgba('+GC+',.72)';ctx.lineWidth=1.1;ctx.stroke(bands[1]);
   ctx.strokeStyle='rgba('+GC+',.92)';ctx.lineWidth=1.3;ctx.stroke(bands[0]);
   ctx.strokeStyle='rgba(125,155,184,.85)';ctx.lineWidth=1.3;ctx.stroke(bands[7]);
   ctx.strokeStyle='rgba(196,152,64,.95)';ctx.lineWidth=1.2;ctx.stroke(bands[4]);
   ctx.strokeStyle='rgba(112,72,38,.95)';ctx.lineWidth=1.3;ctx.stroke(bands[5]);
   // splash rings where the rig hit water
-  const tn=now();for(const sp of SPL){const age=tn-sp.t;if(age>1.6)continue;const r=1+age*4*(.5+sp.k),y=waterY(sp.x,sp.z)+.03;let prev=null;
+  const tn=now();for(const sp of SPL){const age=tn-sp.t;if(age>1.6)continue;const r=1+age*4*(.5+sp.k),y=waterNow(sp.x,sp.z)+.03;let prev=null;
     for(let q=0;q<=16;q++){const a=q/16*6.283,p=[sp.x+Math.cos(a)*r,y,sp.z+Math.sin(a)*r];if(prev)segW(bands[6],prev,p);prev=p;}}
-  if(G.depth>0&&G.alive){const y=waterY(G.x,G.z)+.03;let prev=null;for(let q=0;q<=20;q++){const a=q/20*6.283,r=2.6+Math.sin(tn*4+q)*.15,p=[G.x+Math.cos(a)*r*.8,y,G.z+Math.sin(a)*r];if(prev)segW(bands[6],prev,p);prev=p;}}
+  if(G.depth>0&&G.alive){const y=waterNow(G.x,G.z)+.03;let prev=null;for(let q=0;q<=20;q++){const a=q/20*6.283,r=2.6+Math.sin(tn*4+q)*.15,p=[G.x+Math.cos(a)*r*.8,y,G.z+Math.sin(a)*r];if(prev)segW(bands[6],prev,p);prev=p;}}
   ctx.strokeStyle='rgba(42,98,176,.9)';ctx.lineWidth=1.4;ctx.stroke(bands[6]);
-  const rp=new Path2D(),dg=new Path2D();drawRocks(rp,cx0,cz0,85);drawDecor(dg,rp,cx0,cz0,LAND==='forest'?70:105);drawLogs(rp,cx0,cz0,70);ctx.strokeStyle='rgba(122,92,60,.9)';ctx.lineWidth=1.3;ctx.stroke(rp);
+  const rp=new Path2D(),dg=new Path2D();drawRocks(rp,cx0,cz0,85);drawDecor(dg,rp,cx0,cz0,thick?60:LAND==='forest'?70:105);drawLogs(rp,cx0,cz0,70);ctx.strokeStyle='rgba(122,92,60,.9)';ctx.lineWidth=1.3;ctx.stroke(rp);
   ctx.strokeStyle='rgba(63,138,63,.9)';ctx.lineWidth=1.4;ctx.stroke(dg);
   const pt=new Path2D(),pd=new Path2D(),pm=new Path2D();drawFx(pt,pd,pm);
   ctx.strokeStyle='rgba(90,80,70,.3)';ctx.lineWidth=2;ctx.stroke(pt);ctx.strokeStyle='rgba(176,140,84,.8)';ctx.lineWidth=1.6;ctx.stroke(pd);ctx.strokeStyle='rgba(112,72,38,.9)';ctx.stroke(pm);
@@ -1456,10 +1476,27 @@ function render(dt){
   const gp=new Path2D();drawGhost(gp);ctx.strokeStyle='rgba(42,98,176,.42)';ctx.lineWidth=1.4;ctx.stroke(gp);
   const cab=G.alive&&G.cam==='driver',jp=new Path2D();drawRig(P,jp,cab);
   ctx.strokeStyle=G.alive?(VEH.color||'#d2601a'):'#c8362b';ctx.lineWidth=G.cam==='driver'&&G.alive?2.2:1.8;ctx.stroke(jp);
+  drawWeather(dt);
   if(G.alive&&G.cam==='driver')drawDashHud();
 }
 
 // warning light on the windshield when the rig is near its tip point
+// weather drawn over the scene in screen space: rain streaks, snowflakes, blowing dust, and a haze for fog and dust
+const WP=[];
+function drawWeather(dt){
+  if(WX==='clear')return;
+  if(WX==='fog'||WX==='dust'){const g=ctx.createLinearGradient(0,0,0,H*.75),c=WX==='fog'?'236,238,237':'232,214,176';
+    g.addColorStop(0,'rgba('+c+',.75)');g.addColorStop(.55,'rgba('+c+',.35)');g.addColorStop(1,'rgba('+c+',0)');ctx.fillStyle=g;ctx.fillRect(0,0,W,H*.75);}
+  const n=WX==='rain'?140:WX==='snow'?110:WX==='dust'?90:0;if(!n)return;
+  while(WP.length<n)WP.push({x:Math.random()*W,y:Math.random()*H,s:.6+Math.random()*.8});WP.length=n;
+  const turn=(G.yawRate||0)*W*.3,p=new Path2D(),sp=Math.abs(G.v);
+  for(const q of WP){
+    if(WX==='rain'){q.y+=(900*q.s+sp*20)*dt;q.x+=(-60-turn)*dt;p.moveTo(q.x,q.y);p.lineTo(q.x-6*q.s,q.y-18*q.s);}
+    else if(WX==='snow'){q.y+=(60*q.s+sp*6)*dt;q.x+=(Math.sin(now()*1.3+q.s*9)*20-turn)*dt;p.moveTo(q.x+1.6*q.s,q.y);p.arc(q.x,q.y,1.6*q.s,0,6.283);}
+    else{q.x+=((G.gust||0)*160*q.s-turn+(G.gust>=0?120:-120))*dt;q.y+=Math.sin(now()*2+q.s*7)*10*dt;p.moveTo(q.x,q.y);p.lineTo(q.x-14*q.s*Math.sign(G.gust||1),q.y+1);}
+    if(q.y>H+20){q.y=-20;q.x=Math.random()*W;}if(q.x<-30)q.x+=W+60;if(q.x>W+30)q.x-=W+60;}
+  ctx.strokeStyle=WX==='rain'?'rgba(80,105,130,.55)':WX==='snow'?'rgba(120,140,165,.75)':'rgba(176,140,84,.55)';ctx.lineWidth=WX==='snow'?1.2:1.3;ctx.stroke(p);
+}
 function drawDashHud(){
   const m=margins();if(m.min>8*DEG)return;
   const k=clamp(1-m.min/(8*DEG),0,1),blink=Math.floor(now()*6)%2;
@@ -1563,7 +1600,7 @@ let AC=null,eng=null;
 function ac(){if(!AC){try{AC=new(window.AudioContext||window.webkitAudioContext)();}catch(e){AC=null;}}if(AC&&AC.state==='suspended')AC.resume();return AC;}
 function startEngine(){const a=ac();if(!a||eng)return;const o=a.createOscillator(),o2=a.createOscillator(),lp=a.createBiquadFilter(),g=a.createGain();
   o.type='sawtooth';o2.type='square';lp.type='lowpass';lp.frequency.value=420;g.gain.value=0;o.connect(lp);o2.connect(lp);lp.connect(g);g.connect(a.destination);o.start();o2.start();eng={o,o2,lp,g};}
-function engineTick(){winchTick();if(!eng)return;const a=AC,t=a.currentTime,sp=Math.abs(G.air?G.vh:G.v);
+function engineTick(){winchTick();weatherTick();if(!eng)return;const a=AC,t=a.currentTime,sp=Math.abs(G.air?G.vh:G.v);
   const rpm=clamp(.18+sp/26+G.throttle*.35+(G.spinOut||G.air?G.throttle*.3:0),0,1.3);
   eng.o.frequency.setTargetAtTime(32+rpm*95,t,.06);eng.o2.frequency.setTargetAtTime(16+rpm*47,t,.06);eng.lp.frequency.setTargetAtTime(300+rpm*900,t,.08);
   eng.g.gain.setTargetAtTime(G.snd&&G.alive&&G.started&&!(MODES[MODE].fuel&&G.fuel<=0)?.035+.05*G.throttle:0,t,.08);}
@@ -1580,6 +1617,13 @@ function twang(k){tone(110,.4,'sawtooth',.06*k+.02,48);noise(.2,.12*k,500);}
 function ropeSnap(){noise(.28,.55,7000);tone(1500,.18,'sawtooth',.06,180);setTimeout(()=>noise(.15,.2,900),90);}
 function hiss(){noise(.7,.12,6000);tone(180,.6,'triangle',.03,320);}
 let WN=null;
+let WXN=null;
+function weatherTick(){const a=AC;if(!a)return;const on=G.snd&&G.started&&(WX==='rain'||WX==='dust'||WX==='snow');
+  if(on&&!WXN){const n=a.sampleRate*2,bf=a.createBuffer(1,n,a.sampleRate),d=bf.getChannelData(0);for(let i=0;i<n;i++)d[i]=Math.random()*2-1;
+    const s=a.createBufferSource(),f=a.createBiquadFilter(),g=a.createGain();s.buffer=bf;s.loop=true;f.type='lowpass';g.gain.value=0;s.connect(f);f.connect(g);g.connect(a.destination);s.start();WXN={s,f,g};}
+  if(!WXN)return;const t=a.currentTime;
+  WXN.f.frequency.setTargetAtTime(WX==='rain'?2400:WX==='dust'?420+Math.abs(G.gust||0)*160:300,t,.2);
+  WXN.g.gain.setTargetAtTime(!on?0:WX==='rain'?.05:WX==='dust'?.04+Math.abs(G.gust||0)*.02:.015,t,.3);}
 function winchTick(){const a=AC;if(!a)return;const on=G.snd&&G.started&&G.winching;
   if(on&&!WN){const o=a.createOscillator(),o2=a.createOscillator(),lp=a.createBiquadFilter(),g=a.createGain();o.type='sawtooth';o2.type='square';lp.type='lowpass';lp.frequency.value=900;g.gain.value=0;
     o.connect(lp);o2.connect(lp);lp.connect(g);g.connect(a.destination);o.start();o2.start();WN={o,o2,g};}
@@ -1678,6 +1722,7 @@ function renderMenu(){
   for(const base of['trail','climb','rescue','recovery']){const b=document.createElement('button');b.textContent=MODES[base].n;b.className=cur===base?'on':'';
     b.addEventListener('click',()=>setPlay(modeKey(base,fuel)));box.appendChild(b);}
   $('modeNote').textContent=MODES[MODE].note;$('vehNote').textContent=VEHS[VK].note;
+  $('tWx').textContent='Weather: '+(WXPICK==='random'?'Random':WXS[WXPICK].n);$('tWx').classList.toggle('on',WXPICK!=='clear');
   $('tFuel').textContent='Fuel challenge '+(fuel?'on':'off');$('tFuel').classList.toggle('on',fuel);
   $('tGhost').textContent='Ghost '+(OPT.ghost?'on':'off');$('tGhost').classList.toggle('on',OPT.ghost);
   $('tDmg').textContent='Damage '+(OPT.damage?'on':'off');$('tDmg').classList.toggle('on',OPT.damage);
@@ -1686,11 +1731,12 @@ function renderMenu(){
   $('sTilt').textContent=G.tiltOn?'Start':'Start with tilt';$('sPlain').style.display=G.tiltOn?'none':'';
 }
 function openMenu(){G.started=false;renderMenu();$('start').classList.remove('hide');tokRefresh(renderMenu);}
+$('tWx').addEventListener('click',()=>{const L=['clear','random','rain','fog','dust','snow'];WXPICK=L[(L.indexOf(WXPICK)+1)%L.length];saveOpts();renderMenu();});
 $('tGhost').addEventListener('click',()=>{OPT.ghost=!OPT.ghost;saveOpts();renderMenu();});
 $('tFuel').addEventListener('click',()=>{setPlay(modeKey(baseOf(MODE),!MODES[MODE].fuel));});
 $('sStore').addEventListener('click',openGarage);
 $('tDmg').addEventListener('click',()=>{OPT.damage=!OPT.damage;saveOpts();renderMenu();});
-function begin(tilt){$('start').classList.add('hide');G.started=true;ac();startEngine();if(tilt&&!G.tiltOn)enableTilt();resetRig(true);msg('Shift to D and hold Gas',3);}
+function begin(tilt){$('start').classList.add('hide');G.started=true;ac();startEngine();if(tilt&&!G.tiltOn)enableTilt();rollWeather();resetRig(true);if(WX!=='clear')setTimeout(()=>msg(WXS[WX].note,4),3200);msg('Shift to D and hold Gas',3);}
 $('sTilt').addEventListener('click',()=>begin(true));$('sPlain').addEventListener('click',()=>begin(false));
 setPlay(MODE,LAND);tokRefresh(renderMenu);
 setupInput();resetRig(true);requestAnimationFrame(frame);
