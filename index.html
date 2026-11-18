@@ -26,7 +26,7 @@ v10 adds a fourth rig, a boxy 90s SUV in purple nicknamed the eggplant, and Off 
 v11 adds tow sounds: hook and unhook clanks, rope twang and snap, wheel lift hiss and a winch whine.
 v12 adds weather: rain (slick dirt and slickrock, higher creeks, muddier ground), fog and dust storms (short view, dust gusts push the rig sideways), and snow (bare dirt turns to snow). The menu picks one or rolls a random one that suits the landscape.
 v13 locks the side by side, SUV and pickup behind tokens (1500, 1500 and 2500). The Jeep stays free. Spending goes through the score hub wallet.
-v14 adds player accounts on the score hub, backed by Supabase. Signed in players get the weekly tokens, can buy 1000 tokens for $1 through Stripe, and keep vehicle and part unlocks on the account across phones.
+v14 adds sign in through Supabase Auth with the player's own email (a six digit code) or any outside provider turned on in Supabase. Signed in players get the weekly tokens, can buy 1000 tokens for $1 through Stripe, and keep vehicle and part unlocks on the account across phones.
 -->
 <style>
 :root{
@@ -141,7 +141,7 @@ input{user-select:text;-webkit-user-select:text}
 .unl button:disabled{opacity:.45}
 .acct{margin-top:10px;background:#fff;border:2px solid var(--blue);border-radius:9px;padding:8px;text-align:left}
 .acct input{flex:1;min-width:0;font:inherit;font-size:15px;padding:8px;border:2px solid #b9b5a8;border-radius:7px;background:#fbfaf6;color:#222}
-.acct #acWho{font-weight:800;color:var(--blue);margin-bottom:4px}.acct #acMsg{font-size:13px;margin-top:6px;min-height:1em}
+.acct .acT{font-weight:800;color:var(--blue);margin-bottom:4px}.acct #acWho{font-weight:800;color:var(--blue);margin-bottom:4px}.acct #acMsg{font-size:13px;margin-top:6px;min-height:1em}
 .acct button:disabled{opacity:.45}
 .unl{display:none;margin-top:8px;background:#fff;border:2px solid var(--blue);border-radius:9px;padding:8px}.unl.on{display:block}
 #unlockTxt{font-size:13px;font-weight:800;text-align:center}
@@ -242,8 +242,10 @@ input{user-select:text;-webkit-user-select:text}
     <div class="best" id="sBest"></div>
     <div class="best" id="sTok"></div>
     <div class="acct" id="acct">
-      <div id="acOut"><div class="row"><input id="acName" maxlength="20" placeholder="Player name" autocomplete="username" autocapitalize="none" spellcheck="false" aria-label="Player name"><input id="acPass" type="password" maxlength="100" placeholder="Password" autocomplete="current-password" aria-label="Password"></div>
-        <div class="row"><button id="acIn">Sign in</button><button id="acNew">Create account</button></div></div>
+      <div id="acOut"><div class="acT">Sign in with your email</div>
+        <div class="row"><input id="acEmail" type="email" maxlength="254" placeholder="Your email" autocomplete="email" autocapitalize="none" spellcheck="false" aria-label="Your email"><button id="acSend">Send code</button></div>
+        <div class="row" id="acCodeRow" style="display:none"><input id="acCode" inputmode="numeric" maxlength="10" placeholder="6 digit code" autocomplete="one-time-code" aria-label="Code from the email"><button class="go" id="acVerify">Sign in</button></div>
+        <div class="row" id="acProv"></div></div>
       <div id="acOn"><div id="acWho"></div><div class="row"><button class="go" id="acBuy">Buy 1000 tokens  $1</button><button id="acOff">Sign out</button></div></div>
       <div id="acMsg"></div>
     </div>
@@ -1785,15 +1787,33 @@ $('unlockYes').addEventListener('click',()=>{const k=VPEND;if(!k||!ACC.tok||TOK.
     if(r&&typeof r.balance==='number')TOK.bal=r.balance;renderMenu();
     $('unlockTxt').textContent={not_enough_tokens:'Not enough tokens',slow_down:'One second, then try again',offline:'Token server unreachable'}[r&&r.error]||'Not unlocked ('+((r&&r.error)||'error')+')';});});
 function acMsg(t){$('acMsg').textContent=t;}
-const ACERR={bad_name:'Name is 3 to 20 letters, numbers or _',bad_password:'Password needs 8 or more characters',name_taken:'That name is taken',wrong_login:'Name or password does not match',
-  slow_down:'Too many tries. Wait a few minutes.',too_many_accounts:'Account limit for this network today',offline:'Account server unreachable',service_unavailable:'Account server busy, try again',
+const ACERR={bad_email:'That email does not look right',bad_code:'That code did not match. Check the newest email.',bad_token:'Sign in did not finish, try again',
+  slow_down:'Too many tries. Wait a few minutes.',offline:'Account server unreachable',service_unavailable:'Account server busy, try again',email_failed:'The code email did not send, try again',
   payments_not_configured:'Purchases are not open yet',checkout_failed:'Checkout did not open, try again'};
-function acGo(action){const name=$('acName').value.trim(),pass=$('acPass').value;acMsg(action==='create'?'Creating account...':'Signing in...');
-  $('acIn').disabled=$('acNew').disabled=true;
-  api('mh-account','POST',{action,name,pass}).then(r=>{$('acIn').disabled=$('acNew').disabled=false;
-    if(r&&r.ok){ACC={tok:r.token,name:r.name,unl:[]};saveAcc();$('acPass').value='';acMsg(action==='create'?'Account made. Save your name and password.':'Signed in');tokRefresh(renderMenu);renderMenu();return;}
-    acMsg(ACERR[r&&r.error]||'Did not work ('+((r&&r.error)||'error')+')');});}
-$('acIn').addEventListener('click',()=>acGo('login'));$('acNew').addEventListener('click',()=>acGo('create'));
+function acDone(r){if(r&&r.ok){ACC={tok:r.token,name:r.name,unl:[]};saveAcc();acMsg('Signed in');tokRefresh(renderMenu);renderMenu();return true;}
+  acMsg(ACERR[r&&r.error]||'Did not work ('+((r&&r.error)||'error')+')');return false;}
+$('acSend').addEventListener('click',()=>{const email=$('acEmail').value.trim();if(!email)return acMsg('Type your email first');
+  $('acSend').disabled=true;acMsg('Sending code...');
+  api('mh-auth','POST',{action:'send',email}).then(r=>{$('acSend').disabled=false;
+    if(r&&r.ok){$('acCodeRow').style.display='';$('acSend').textContent='Send again';acMsg('Code sent to '+email+'. Type it above.');$('acCode').focus();}
+    else acMsg(ACERR[r&&r.error]||'Code did not send ('+((r&&r.error)||'error')+')');});});
+$('acVerify').addEventListener('click',()=>{const email=$('acEmail').value.trim(),code=$('acCode').value.trim();if(!code)return acMsg('Type the code from the email');
+  $('acVerify').disabled=true;acMsg('Checking code...');
+  api('mh-auth','POST',{action:'verify',email,code}).then(r=>{$('acVerify').disabled=false;if(acDone(r))$('acCode').value='';});});
+// Outside providers turned on in Supabase show up here as buttons.
+const PNAME={github:'GitHub',discord:'Discord',apple:'Apple',gitlab:'GitLab',twitch:'Twitch',spotify:'Spotify',slack:'Slack',azure:'Microsoft',twitter:'X',facebook:'Facebook',linkedin_oidc:'LinkedIn',bitbucket:'Bitbucket',notion:'Notion',zoom:'Zoom',kakao:'Kakao',keycloak:'Keycloak',figma:'Figma',workos:'WorkOS'};
+let AUTHZ='';
+function loadProviders(){api('mh-auth').then(r=>{const box=$('acProv');box.replaceChildren();if(!(r&&r.ok))return;AUTHZ=r.authorize;
+  for(const p of r.providers||[]){if(!PNAME[p])continue;const b=document.createElement('button');b.textContent='Sign in with '+PNAME[p];
+    b.addEventListener('click',()=>{const back=location.origin+location.pathname;window.open(AUTHZ+'?provider='+encodeURIComponent(p)+'&redirect_to='+encodeURIComponent(back),'_blank');acMsg('Finish signing in on the new tab.');});
+    box.appendChild(b);}});}
+// A provider sign in comes back to the game with a Supabase token in the address. Swap it for a game session.
+(function(){const h=new URLSearchParams(location.hash.slice(1));const at=h.get('access_token');if(!at)return;
+  history.replaceState(null,'',location.pathname+location.search);acMsg('Finishing sign in...');
+  api('mh-auth','POST',{action:'exchange',access_token:at}).then(r=>{if(acDone(r)&&window.opener)acMsg('Signed in. You can close this tab.');});})();
+window.addEventListener('storage',e=>{if(e.key!=='mobbyhill-acct')return;
+  try{const a=JSON.parse(e.newValue||'null');if(a&&a.tok&&a.tok!==ACC.tok){ACC={tok:a.tok,name:String(a.name||''),unl:[]};acMsg('Signed in');tokRefresh(renderMenu);renderMenu();}}catch(x){}});
+loadProviders();
 $('acOff').addEventListener('click',()=>signOut(false));
 let PAYPOLL=0;
 $('acBuy').addEventListener('click',()=>{if(!ACC.tok)return;const w=window.open('','_blank');acMsg('Opening checkout...');$('acBuy').disabled=true;
